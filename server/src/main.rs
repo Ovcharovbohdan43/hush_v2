@@ -63,7 +63,11 @@ async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router
         .route("/api/v1/auth/login", post(api::auth::login))
         .route("/api/v1/auth/refresh", post(api::auth::refresh))
         .route("/api/v1/auth/register", post(api::auth::register))
-        .route("/api/v1/targets/verify", post(api::targets::verify));
+        .route("/api/v1/targets/verify", post(api::targets::verify))
+        // Email forwarding webhook (public, but should be secured with webhook secret in production)
+        .route("/api/v1/incoming/mailgun", post(api::incoming::handle_incoming_email))
+        .route("/api/v1/incoming/mailgun/json", post(api::incoming::handle_incoming_email_json))
+        .route("/api/v1/incoming/sendgrid", post(api::incoming::handle_sendgrid_webhook));
 
     // Protected routes (require authentication)
     let protected_routes = Router::new()

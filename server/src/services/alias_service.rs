@@ -161,5 +161,23 @@ impl AliasService {
 
         Ok(logs)
     }
+
+    /// Find alias by email address (for email forwarding)
+    pub async fn find_by_address(pool: &PgPool, address: &str) -> Result<Option<Alias>> {
+        let alias = sqlx::query_as::<_, Alias>(
+            r#"
+            SELECT * FROM aliases 
+            WHERE address = $1 
+            AND status = 'active'
+            AND (expires_at IS NULL OR expires_at > NOW())
+            LIMIT 1
+            "#,
+        )
+        .bind(address)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(alias)
+    }
 }
 

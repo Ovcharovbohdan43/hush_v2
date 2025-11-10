@@ -212,6 +212,51 @@ curl http://localhost:3001/health
 
 **Ответ:** `OK`
 
+## 13. Email Forwarding Webhook (Mailgun - JSON)
+
+```bash
+curl -X POST http://localhost:3001/api/v1/incoming/mailgun/json \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipient": "hush-abc12345@hush.example",
+    "sender": "sender@example.com",
+    "subject": "Test Email",
+    "body-plain": "Plain text body",
+    "body-html": "<html><body>HTML body</body></html>",
+    "Message-Id": "<message-id@example.com>"
+  }'
+```
+
+**Ответ:**
+```json
+{
+  "status": "forwarded",
+  "target": "user@example.com"
+}
+```
+
+## 14. Email Forwarding Webhook (Mailgun - Form)
+
+```bash
+curl -X POST http://localhost:3001/api/v1/incoming/mailgun \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "recipient=hush-abc12345@hush.example&sender=sender@example.com&subject=Test&body-plain=Body"
+```
+
+## 15. Email Forwarding Webhook (SendGrid)
+
+```bash
+curl -X POST http://localhost:3001/api/v1/incoming/sendgrid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "hush-abc12345@hush.example",
+    "from": "sender@example.com",
+    "subject": "Test Email",
+    "text": "Plain text body",
+    "html": "<html><body>HTML body</body></html>"
+  }'
+```
+
 ## Обработка ошибок
 
 Все ошибки возвращаются в формате:
