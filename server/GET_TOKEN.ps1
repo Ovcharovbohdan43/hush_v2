@@ -2,7 +2,7 @@
 # Usage: .\GET_TOKEN.ps1
 
 param(
-    [string]$Email = "test2@example.com",
+    [string]$Email = "test6@example.com",
     [string]$Password = "TestPassword123!",
     [switch]$Login = $false
 )

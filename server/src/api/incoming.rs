@@ -8,7 +8,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::error::{AppError, Result};
+use crate::error::Result;
 use crate::models::EmailStatus;
 use crate::services::{AliasService, EmailService, TargetService};
 
