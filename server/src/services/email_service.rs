@@ -5,6 +5,7 @@ use lettre::{
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
 };
+use tracing::{error, info};
 
 pub struct EmailService;
 
@@ -14,11 +15,19 @@ impl EmailService {
         to: &str,
         token: &str,
     ) -> Result<()> {
+        info!("Sending verification email to: {}", to);
+        info!("SMTP_FROM value: '{}'", config.smtp_from);
         let verification_url = format!("{}/api/v1/targets/verify?token={}", config.api_base_url, token);
 
+        let from_addr = config.smtp_from.trim();
+        if from_addr.is_empty() {
+            return Err(AppError::Internal("SMTP_FROM is empty".to_string()));
+        }
+
         let email = MessageBuilder::new()
-            .from(config.smtp_from.parse().map_err(|e| {
-                AppError::Internal(format!("Invalid from address: {}", e))
+            .from(from_addr.parse().map_err(|e| {
+                error!("Failed to parse SMTP_FROM '{}': {}", from_addr, e);
+                AppError::Internal(format!("Invalid from address '{}': {}", from_addr, e))
             })?)
             .to(to.parse().map_err(|e| {
                 AppError::Internal(format!("Invalid to address: {}", e))
@@ -59,8 +68,14 @@ impl EmailService {
             config.smtp_password.clone(),
         );
 
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
-            .map_err(|e| AppError::Internal(format!("Failed to create SMTP transport: {}", e)))?
+        // For Brevo and most SMTP servers, we need STARTTLS
+        info!("Connecting to SMTP server: {}:{}", config.smtp_host, config.smtp_port);
+        
+        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
+            .map_err(|e| {
+                error!("Failed to create SMTP transport: {}", e);
+                AppError::Internal(format!("Failed to create SMTP transport: {}", e))
+            })?
             .port(config.smtp_port)
             .credentials(creds)
             .build();
@@ -68,8 +83,12 @@ impl EmailService {
         mailer
             .send(email)
             .await
-            .map_err(|e| AppError::Internal(format!("Failed to send email: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to send email: {}", e);
+                AppError::Internal(format!("Failed to send email: {}", e))
+            })?;
 
+        info!("Verification email sent successfully to: {}", to);
         Ok(())
     }
 }

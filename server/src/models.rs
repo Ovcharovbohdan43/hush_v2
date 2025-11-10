@@ -34,6 +34,7 @@ pub enum AliasStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "alias_type", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum AliasType {
     Random,
     Custom,
