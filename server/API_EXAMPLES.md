@@ -1,0 +1,258 @@
+# API Examples - Hush V2 Server
+
+Примеры использования API endpoints.
+
+## Базовый URL
+
+```
+http://localhost:3001
+```
+
+## 1. Регистрация пользователя
+
+```bash
+curl -X POST http://localhost:3001/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "password123"
+  }'
+```
+
+**Ответ:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 3600
+}
+```
+
+## 2. Вход
+
+```bash
+curl -X POST http://localhost:3001/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "password123"
+  }'
+```
+
+**Ответ:** (аналогично регистрации)
+
+## 3. Обновление токена
+
+```bash
+curl -X POST http://localhost:3001/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "your-refresh-token-here"
+  }'
+```
+
+## 4. Создание алиаса (требует аутентификацию)
+
+### Random alias
+```bash
+curl -X POST http://localhost:3001/api/v1/aliases \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "alias_type": "random"
+  }'
+```
+
+### Custom alias
+```bash
+curl -X POST http://localhost:3001/api/v1/aliases \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "alias_type": "custom",
+    "custom": "my-custom-alias"
+  }'
+```
+
+### Temporary alias (1 hour)
+```bash
+curl -X POST http://localhost:3001/api/v1/aliases \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "alias_type": "temporary",
+    "ttl_minutes": 60
+  }'
+```
+
+**Ответ:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "address": "hush-abc12345@hush.example",
+  "status": "active",
+  "created_at": "2024-01-01T12:00:00Z"
+}
+```
+
+## 5. Список алиасов
+
+```bash
+curl -X GET http://localhost:3001/api/v1/aliases \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Ответ:**
+```json
+{
+  "aliases": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "address": "hush-abc12345@hush.example",
+      "status": "active",
+      "created_at": "2024-01-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+## 6. Включение/выключение алиаса
+
+```bash
+curl -X POST http://localhost:3001/api/v1/aliases/ALIAS_ID/toggle \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "enabled": false
+  }'
+```
+
+## 7. Удаление алиаса
+
+```bash
+curl -X DELETE http://localhost:3001/api/v1/aliases/ALIAS_ID \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+## 8. Логи алиаса
+
+```bash
+curl -X GET "http://localhost:3001/api/v1/aliases/ALIAS_ID/logs?limit=20" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Ответ:**
+```json
+{
+  "logs": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440000",
+      "from": "sender@example.com",
+      "subject": "Test Email",
+      "status": "forwarded",
+      "time": "2024-01-01T12:00:00Z",
+      "metadata": null
+    }
+  ]
+}
+```
+
+## 9. Запрос верификации целевого email
+
+```bash
+curl -X POST http://localhost:3001/api/v1/targets/request_verify \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "target": "my-real-email@example.com"
+  }'
+```
+
+**Ответ:**
+```json
+{
+  "message": "verification_sent"
+}
+```
+
+## 10. Получение текущего целевого email
+
+```bash
+curl -X GET http://localhost:3001/api/v1/targets \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Ответ:**
+```json
+{
+  "email": "my-real-email@example.com",
+  "verified": true
+}
+```
+
+## 11. Верификация email (публичный endpoint)
+
+```bash
+curl -X POST "http://localhost:3001/api/v1/targets/verify?token=VERIFICATION_TOKEN"
+```
+
+**Ответ:**
+```json
+{
+  "message": "Email verified successfully",
+  "email": "my-real-email@example.com"
+}
+```
+
+## 12. Health check
+
+```bash
+curl http://localhost:3001/health
+```
+
+**Ответ:** `OK`
+
+## Обработка ошибок
+
+Все ошибки возвращаются в формате:
+
+```json
+{
+  "error": "Error message",
+  "message": "Detailed error description"
+}
+```
+
+### Примеры ошибок:
+
+**401 Unauthorized** (нет токена или токен невалидный):
+```json
+{
+  "error": "Missing Authorization header",
+  "message": "Authentication error: Missing Authorization header"
+}
+```
+
+**400 Bad Request** (валидация):
+```json
+{
+  "error": "Invalid email format",
+  "message": "Validation error: Invalid email format"
+}
+```
+
+**404 Not Found**:
+```json
+{
+  "error": "Alias not found",
+  "message": "Not found: Alias not found"
+}
+```
+
+## Примечания
+
+- Все защищенные endpoints требуют заголовок `Authorization: Bearer <access_token>`
+- Access token действителен 1 час (по умолчанию)
+- Refresh token действителен 7 дней (по умолчанию)
+- При истечении access token используйте `/api/v1/auth/refresh` для получения нового
+
