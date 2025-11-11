@@ -12,21 +12,52 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Хелпер для работы с storage (localStorage или chrome.storage)
+const storage = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      return new Promise((resolve) => {
+        chrome.storage.local.get([key], (result) => {
+          resolve(result[key] || null);
+        });
+      });
+    }
+    return localStorage.getItem(key);
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      return new Promise((resolve) => {
+        chrome.storage.local.set({ [key]: value }, () => resolve());
+      });
+    }
+    localStorage.setItem(key, value);
+  },
+  removeItem: async (key: string): Promise<void> => {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      return new Promise((resolve) => {
+        chrome.storage.local.remove([key], () => resolve());
+      });
+    }
+    localStorage.removeItem(key);
+  },
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Проверяем наличие токена при загрузке
-    const token = apiClient.getAccessToken();
-    setIsAuthenticated(!!token);
-    setIsLoading(false);
+    const initAuth = async () => {
+      const token = await storage.getItem('access_token');
+      setIsAuthenticated(!!token);
+      setIsLoading(false);
 
-    // Пытаемся обновить токен если есть refresh token
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (refreshToken && token) {
-      refreshTokenSilently(refreshToken);
-    }
+      const refreshTokenValue = await storage.getItem('refresh_token');
+      if (refreshTokenValue && token) {
+        refreshTokenSilently(refreshTokenValue);
+      }
+    };
+    initAuth();
   }, []);
 
   const refreshTokenSilently = async (refreshToken: string) => {
@@ -34,7 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiClient.refresh(refreshToken);
       setIsAuthenticated(true);
     } catch (error) {
-      // Если refresh не удался, очищаем токены
       apiClient.clearTokens();
       setIsAuthenticated(false);
     }
@@ -47,7 +77,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterRequest) => {
     await apiClient.register(data);
-    // После регистрации автоматически логинимся
     await login(data);
   };
 
@@ -57,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshToken = async () => {
-    const refreshTokenValue = localStorage.getItem('refresh_token');
+    const refreshTokenValue = await storage.getItem('refresh_token');
     if (refreshTokenValue) {
       await refreshTokenSilently(refreshTokenValue);
     }

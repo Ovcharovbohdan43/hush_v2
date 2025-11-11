@@ -54,8 +54,38 @@ class ApiClient {
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
-    // Загружаем токен из localStorage при инициализации
-    this.accessToken = localStorage.getItem('access_token');
+    // Загружаем токен из storage (localStorage или chrome.storage)
+    this.loadToken();
+  }
+
+  private async loadToken() {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.get(['access_token'], (result) => {
+        this.accessToken = result.access_token || null;
+      });
+    } else {
+      this.accessToken = localStorage.getItem('access_token');
+    }
+  }
+
+  private async saveToken(key: string, value: string) {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.set({ [key]: value }, () => resolve());
+      });
+    } else {
+      localStorage.setItem(key, value);
+    }
+  }
+
+  private async removeToken(key: string) {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.remove([key], () => resolve());
+      });
+    } else {
+      localStorage.removeItem(key);
+    }
   }
 
   private async request<T>(
@@ -101,7 +131,7 @@ class ApiClient {
       body: JSON.stringify(data),
     });
     this.setAccessToken(response.access_token);
-    localStorage.setItem('refresh_token', response.refresh_token);
+    await this.saveToken('refresh_token', response.refresh_token);
     return response;
   }
 
@@ -192,13 +222,13 @@ class ApiClient {
   // Token management
   setAccessToken(token: string) {
     this.accessToken = token;
-    localStorage.setItem('access_token', token);
+    this.saveToken('access_token', token);
   }
 
-  clearTokens() {
+  async clearTokens() {
     this.accessToken = null;
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    await this.removeToken('access_token');
+    await this.removeToken('refresh_token');
   }
 
   getAccessToken(): string | null {
