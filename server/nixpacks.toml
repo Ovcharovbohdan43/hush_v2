@@ -1,0 +1,14 @@
+# Nixpacks configuration for Railway
+# Railway will use this to build the Rust project
+
+[phases.setup]
+nixPkgs = ["rustc", "cargo"]
+
+[phases.install]
+cmds = [
+  "cargo build --release"
+]
+
+[start]
+cmd = "./target/release/hush-v2-server"
+
