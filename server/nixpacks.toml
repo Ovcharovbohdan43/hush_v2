@@ -2,13 +2,13 @@
 # Railway will use this to build the Rust project
 
 [phases.setup]
-nixPkgs = ["rustc", "cargo"]
-# Use Rust 1.82+ to support edition2024
 providers = ["rust"]
 
 [phases.install]
 cmds = [
+  "rustup update stable",
   "rustup default stable",
+  "cargo --version",
   "cargo build --release"
 ]
 
