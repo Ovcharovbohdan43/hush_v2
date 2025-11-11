@@ -2,15 +2,15 @@ use axum::{
     extract::{Extension, Path, Query},
     Json,
 };
-use sqlx::PgPool;
 use serde::Deserialize;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::AuthenticatedUser;
+use crate::config::Config;
 use crate::error::{AppError, Result};
 use crate::models::{AliasResponse, CreateAliasRequest, ToggleAliasRequest};
 use crate::services::AliasService;
-use crate::config::Config;
 
 #[derive(Deserialize)]
 pub struct LogsQuery {
@@ -66,8 +66,8 @@ pub async fn toggle(
     Path(id): Path<String>,
     Json(req): Json<ToggleAliasRequest>,
 ) -> Result<Json<AliasResponse>> {
-    let alias_id = Uuid::parse_str(&id)
-        .map_err(|_| AppError::Validation("Invalid alias ID".to_string()))?;
+    let alias_id =
+        Uuid::parse_str(&id).map_err(|_| AppError::Validation("Invalid alias ID".to_string()))?;
 
     let alias = AliasService::toggle(&pool, alias_id, user.user_id, req.enabled).await?;
 
@@ -84,8 +84,8 @@ pub async fn delete(
     user: AuthenticatedUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
-    let alias_id = Uuid::parse_str(&id)
-        .map_err(|_| AppError::Validation("Invalid alias ID".to_string()))?;
+    let alias_id =
+        Uuid::parse_str(&id).map_err(|_| AppError::Validation("Invalid alias ID".to_string()))?;
 
     AliasService::delete(&pool, alias_id, user.user_id).await?;
 
@@ -98,8 +98,8 @@ pub async fn logs(
     Path(id): Path<String>,
     Query(params): Query<LogsQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let alias_id = Uuid::parse_str(&id)
-        .map_err(|_| AppError::Validation("Invalid alias ID".to_string()))?;
+    let alias_id =
+        Uuid::parse_str(&id).map_err(|_| AppError::Validation("Invalid alias ID".to_string()))?;
 
     let limit = params.limit.unwrap_or(20);
 
@@ -121,4 +121,3 @@ pub async fn logs(
 
     Ok(Json(serde_json::json!({ "logs": response })))
 }
-

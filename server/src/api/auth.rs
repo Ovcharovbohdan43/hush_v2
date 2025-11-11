@@ -4,9 +4,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::{authenticate_user, hash_password, AuthConfig};
+use crate::config::Config;
 use crate::error::{AppError, Result};
 use crate::models::{LoginRequest, LoginResponse, RefreshRequest};
-use crate::config::Config;
 
 pub async fn login(
     Extension(pool): Extension<PgPool>,
@@ -21,10 +21,8 @@ pub async fn login(
     let access_token = auth_config.encode_token(&user.id.to_string())?;
 
     // For refresh token, we'll use a longer expiration
-    let refresh_auth_config = AuthConfig::new(
-        config.jwt_secret.clone(),
-        config.refresh_token_expires_in,
-    );
+    let refresh_auth_config =
+        AuthConfig::new(config.jwt_secret.clone(), config.refresh_token_expires_in);
     let refresh_token = refresh_auth_config.encode_token(&user.id.to_string())?;
 
     Ok(Json(LoginResponse {
@@ -38,10 +36,8 @@ pub async fn refresh(
     Extension(config): Extension<Config>,
     Json(req): Json<RefreshRequest>,
 ) -> Result<Json<LoginResponse>> {
-    let refresh_auth_config = AuthConfig::new(
-        config.jwt_secret.clone(),
-        config.refresh_token_expires_in,
-    );
+    let refresh_auth_config =
+        AuthConfig::new(config.jwt_secret.clone(), config.refresh_token_expires_in);
 
     let claims = refresh_auth_config.decode_token(&req.refresh_token)?;
 
@@ -70,7 +66,7 @@ pub async fn register(
     if !req.email.contains('@') || !req.email.contains('.') {
         return Err(AppError::Validation("Invalid email format".to_string()));
     }
-    
+
     // Email should be lowercase
     let email = req.email.to_lowercase().trim().to_string();
     if email.is_empty() {
@@ -79,7 +75,9 @@ pub async fn register(
 
     // Validate password length
     if req.password.len() < 8 {
-        return Err(AppError::Validation("Password must be at least 8 characters".to_string()));
+        return Err(AppError::Validation(
+            "Password must be at least 8 characters".to_string(),
+        ));
     }
 
     // Check if user already exists
@@ -96,22 +94,19 @@ pub async fn register(
     let password_hash = hash_password(&req.password).await?;
 
     // Create user
-    let user_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
-    )
-    .bind(&email)
-    .bind(&password_hash)
-    .fetch_one(&pool)
-    .await?;
+    let user_id: Uuid =
+        sqlx::query_scalar("INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id")
+            .bind(&email)
+            .bind(&password_hash)
+            .fetch_one(&pool)
+            .await?;
 
     // Generate tokens
     let auth_config = AuthConfig::new(config.jwt_secret.clone(), config.jwt_expires_in);
     let access_token = auth_config.encode_token(&user_id.to_string())?;
 
-    let refresh_auth_config = AuthConfig::new(
-        config.jwt_secret.clone(),
-        config.refresh_token_expires_in,
-    );
+    let refresh_auth_config =
+        AuthConfig::new(config.jwt_secret.clone(), config.refresh_token_expires_in);
     let refresh_token = refresh_auth_config.encode_token(&user_id.to_string())?;
 
     Ok(Json(LoginResponse {
@@ -125,6 +120,7 @@ pub async fn logout() -> Result<Json<serde_json::Value>> {
     // In a stateless JWT system, logout is typically handled client-side
     // by removing the token. If you need server-side logout, you'd maintain
     // a blacklist of tokens.
-    Ok(Json(serde_json::json!({ "message": "Logged out successfully" })))
+    Ok(Json(
+        serde_json::json!({ "message": "Logged out successfully" }),
+    ))
 }
-

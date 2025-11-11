@@ -20,10 +20,9 @@ pub async fn subscribe(
     // TODO: Implement push notification subscription
     // This would typically store the push token in the database
     // and integrate with a push notification service (e.g., Firebase Cloud Messaging)
-    
+
     Ok(Json(serde_json::json!({
         "message": "Subscription saved",
         "status": "success"
     })))
 }
-

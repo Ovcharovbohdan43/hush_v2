@@ -1,10 +1,6 @@
 use crate::error::{AppError, Result};
 use crate::models::User;
-use axum::{
-    extract::FromRequestParts,
-    http::request::Parts,
-    Extension,
-};
+use axum::{extract::FromRequestParts, http::request::Parts, Extension};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -65,11 +61,7 @@ pub async fn hash_password(password: &str) -> Result<String> {
         .map_err(|e| AppError::Internal(format!("Password hashing failed: {}", e)))
 }
 
-pub async fn authenticate_user(
-    pool: &PgPool,
-    email: &str,
-    password: &str,
-) -> Result<User> {
+pub async fn authenticate_user(pool: &PgPool, email: &str, password: &str) -> Result<User> {
     let user = sqlx::query_as::<_, User>(
         "SELECT id, email, password_hash, created_at, updated_at FROM users WHERE email = $1",
     )
@@ -91,36 +83,42 @@ pub struct AuthenticatedUser {
     pub user_id: uuid::Uuid,
 }
 
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
     S: Send + Sync,
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self> {
-        let Extension(config) = Extension::<crate::config::Config>::from_request_parts(parts, state)
-            .await
-            .map_err(|_| AppError::Auth("Config not found".to_string()))?;
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> impl std::future::Future<Output = Result<Self>> + Send {
+        async move {
+            let Extension(config) =
+                Extension::<crate::config::Config>::from_request_parts(parts, state)
+                    .await
+                    .map_err(|_| AppError::Auth("Config not found".to_string()))?;
 
-        let auth_header = parts
-            .headers
-            .get("Authorization")
-            .and_then(|h| h.to_str().ok())
-            .ok_or_else(|| AppError::Auth("Missing Authorization header".to_string()))?;
+            let auth_header = parts
+                .headers
+                .get("Authorization")
+                .and_then(|h| h.to_str().ok())
+                .ok_or_else(|| AppError::Auth("Missing Authorization header".to_string()))?;
 
-        if !auth_header.starts_with("Bearer ") {
-            return Err(AppError::Auth("Invalid Authorization header format".to_string()));
+            if !auth_header.starts_with("Bearer ") {
+                return Err(AppError::Auth(
+                    "Invalid Authorization header format".to_string(),
+                ));
+            }
+
+            let token = &auth_header[7..];
+            let auth_config = AuthConfig::new(config.jwt_secret.clone(), config.jwt_expires_in);
+            let claims = auth_config.decode_token(token)?;
+
+            let user_id = uuid::Uuid::parse_str(&claims.sub)
+                .map_err(|_| AppError::Auth("Invalid user ID in token".to_string()))?;
+
+            Ok(AuthenticatedUser { user_id })
         }
-
-        let token = &auth_header[7..];
-        let auth_config = AuthConfig::new(config.jwt_secret.clone(), config.jwt_expires_in);
-        let claims = auth_config.decode_token(token)?;
-
-        let user_id = uuid::Uuid::parse_str(&claims.sub)
-            .map_err(|_| AppError::Auth("Invalid user ID in token".to_string()))?;
-
-        Ok(AuthenticatedUser { user_id })
     }
 }
-

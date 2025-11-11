@@ -7,10 +7,10 @@ use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::auth::AuthenticatedUser;
+use crate::config::Config;
 use crate::error::Result;
 use crate::models::{RequestVerifyRequest, RequestVerifyResponse};
 use crate::services::{EmailService, TargetService};
-use crate::config::Config;
 
 #[derive(Deserialize)]
 pub struct VerifyQuery {
@@ -204,4 +204,3 @@ pub async fn verify_post(
         "email": target.email
     })))
 }
-

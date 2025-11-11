@@ -77,19 +77,23 @@ impl AliasService {
     }
 
     pub async fn get_by_id(pool: &PgPool, alias_id: Uuid, user_id: Uuid) -> Result<Alias> {
-        let alias = sqlx::query_as::<_, Alias>(
-            "SELECT * FROM aliases WHERE id = $1 AND user_id = $2",
-        )
-        .bind(alias_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Alias not found".to_string()))?;
+        let alias =
+            sqlx::query_as::<_, Alias>("SELECT * FROM aliases WHERE id = $1 AND user_id = $2")
+                .bind(alias_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Alias not found".to_string()))?;
 
         Ok(alias)
     }
 
-    pub async fn toggle(pool: &PgPool, alias_id: Uuid, user_id: Uuid, enabled: bool) -> Result<Alias> {
+    pub async fn toggle(
+        pool: &PgPool,
+        alias_id: Uuid,
+        user_id: Uuid,
+        enabled: bool,
+    ) -> Result<Alias> {
         let status = if enabled {
             AliasStatus::Active
         } else {
@@ -180,4 +184,3 @@ impl AliasService {
         Ok(alias)
     }
 }
-

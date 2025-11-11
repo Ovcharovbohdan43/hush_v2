@@ -257,6 +257,65 @@ curl -X POST http://localhost:3001/api/v1/incoming/sendgrid \
   }'
 ```
 
+## 16. Email Forwarding Webhook (Brevo) с вложениями
+
+Brevo webhook поддерживает вложения в формате base64. Это основной формат для обработки вложений.
+
+```bash
+curl -X POST http://localhost:3001/api/v1/incoming/brevo \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": {
+      "email": "sender@example.com",
+      "name": "Test Sender"
+    },
+    "to": [
+      {
+        "email": "hush-abc12345@hush.example",
+        "name": "Recipient"
+      }
+    ],
+    "subject": "Test Email with Attachments",
+    "text": "Plain text body",
+    "html": "<html><body>HTML body</body></html>",
+    "message-id": "<message-id@example.com>",
+    "attachments": [
+      {
+        "filename": "document.pdf",
+        "contentType": "application/pdf",
+        "content": "JVBERi0xLjQKJdPr6eEKMSAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5kb2JqCjIgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9LaWRzIFszIDAgUl0KL0NvdW50IDEKL01lZGlhQm94IFswIDAgNjEyIDc5Ml0KPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1BhcmVudCAyIDAgUgovUmVzb3VyY2VzIDw8Ci9Gb250IDw8Ci9GMSA0IDAgUgo+Pgo+PgovQ29udGVudHMgNSAwIFIKPj4KZW5kb2JqCjQgMCBvYmoKPDwKL1R5cGUgL0ZvbnQKL1N1YnR5cGUgL1R5cGUxCi9CYXNlRm9udCAvSGVsdmV0aWNhCj4+CmVuZG9iag===",
+        "size": 256
+      },
+      {
+        "filename": "image.jpg",
+        "contentType": "image/jpeg",
+        "content": "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A",
+        "size": 128
+      }
+    ]
+  }'
+```
+
+**Ответ:**
+```json
+{
+  "status": "forwarded",
+  "target": "user@example.com"
+}
+```
+
+### Особенности Brevo webhook:
+
+- **Вложения**: Поддерживаются вложения в формате base64 в поле `content` или `base64`
+- **Размер вложений**: Максимальный размер контролируется через `MAX_ATTACHMENT_SIZE` (по умолчанию 10MB)
+- **Формат полей**: 
+  - `filename` или `name` - имя файла
+  - `contentType` или `type` - MIME тип
+  - `content` или `base64` - содержимое в base64
+  - `size` - размер в байтах (опционально)
+- **Обработка**: Вложения автоматически декодируются из base64 и пересылаются вместе с письмом
+- **Ограничения**: Вложения превышающие лимит размера пропускаются с предупреждением в логах
+
 ## Обработка ошибок
 
 Все ошибки возвращаются в формате:

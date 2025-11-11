@@ -133,4 +133,3 @@ pub struct RequestVerifyResponse {
 pub struct VerifyRequest {
     pub token: String,
 }
-
