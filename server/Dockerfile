@@ -1,6 +1,10 @@
-FROM rust:1.75 as builder
+FROM rust:1.80 as builder
 
 WORKDIR /app
+
+# Install nightly Rust for edition2024 support
+RUN rustup default nightly && \
+    rustup update nightly
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
