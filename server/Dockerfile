@@ -2,9 +2,11 @@ FROM rust:1.75 as builder
 
 WORKDIR /app
 
-# Update Rust to nightly to support edition2024
-RUN rustup default nightly && \
-    rustup update nightly
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy Cargo files
 COPY Cargo.toml Cargo.lock* ./

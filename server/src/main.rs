@@ -17,7 +17,7 @@ use axum::{
 use std::net::SocketAddr;
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     trace::TraceLayer,
 };
 use tracing::{info, Level, warn};
@@ -68,11 +68,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router> {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any)
-        .expose_headers(Any);
+    let cors = CorsLayer::permissive();
 
     // Rate limiting configuration
     let rate_limit_config = RateLimitConfig::from_env();
