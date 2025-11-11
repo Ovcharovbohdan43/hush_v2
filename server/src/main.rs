@@ -10,8 +10,7 @@ mod services;
 mod webhook_security;
 
 use axum::{
-    http::{StatusCode, Uri},
-    response::Redirect,
+    http::StatusCode,
     routing::{get, post},
     Json, Router,
 };
