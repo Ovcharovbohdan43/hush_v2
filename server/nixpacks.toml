@@ -8,13 +8,7 @@ providers = ["rust"]
 cmds = [
   "rustup toolchain install nightly",
   "rustup default nightly",
-  "rustc --version",
-  "cargo --version",
-  "cargo build --release"
-]
-
-[phases.build]
-cmds = [
+  "rustup update nightly",
   "rustc --version",
   "cargo --version",
   "cargo build --release"
