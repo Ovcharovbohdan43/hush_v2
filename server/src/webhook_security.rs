@@ -156,19 +156,19 @@ fn verify_mailgun_signature(
         })
         .unwrap_or_default();
 
-    let signature = query_params
+    let signature: String = query_params
         .get("signature")
         .or_else(|| headers.get("x-mailgun-signature").and_then(|h| h.to_str().ok()))
         .map(|s| s.to_string())
         .ok_or_else(|| AppError::Auth("Missing Mailgun signature".to_string()))?;
 
-    let timestamp = query_params
+    let timestamp: String = query_params
         .get("timestamp")
         .or_else(|| headers.get("x-mailgun-timestamp").and_then(|h| h.to_str().ok()))
         .map(|s| s.to_string())
         .ok_or_else(|| AppError::Auth("Missing Mailgun timestamp".to_string()))?;
 
-    let token = query_params
+    let token: String = query_params
         .get("token")
         .or_else(|| headers.get("x-mailgun-token").and_then(|h| h.to_str().ok()))
         .map(|s| s.to_string())
@@ -196,7 +196,7 @@ fn verify_mailgun_signature(
     let expected_signature = hex::encode(mac.finalize().into_bytes());
 
     // Compare signatures (constant-time comparison)
-    if expected_signature != *signature {
+    if expected_signature != signature {
         warn!("Mailgun signature verification failed");
         return Err(AppError::Auth("Invalid Mailgun signature".to_string()));
     }
@@ -292,7 +292,7 @@ fn verify_brevo_secret(
         })
         .unwrap_or_default();
 
-    let provided_secret = query_params
+    let provided_secret: String = query_params
         .get("secret")
         .or_else(|| {
             headers
@@ -303,7 +303,7 @@ fn verify_brevo_secret(
         .ok_or_else(|| AppError::Auth("Missing Brevo secret".to_string()))?;
 
     // Constant-time comparison
-    if provided_secret != secret {
+    if provided_secret != *secret {
         warn!("Brevo secret verification failed");
         return Err(AppError::Auth("Invalid Brevo secret".to_string()));
     }
