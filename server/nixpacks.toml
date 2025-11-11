@@ -3,10 +3,12 @@
 
 [phases.setup]
 providers = ["rust"]
+nixPkgs = ["rustc", "cargo"]
 
 [phases.install]
 cmds = [
-  "rustup toolchain install nightly",
+  "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly",
+  "source $HOME/.cargo/env",
   "rustup default nightly",
   "rustup update nightly",
   "rustc --version",
