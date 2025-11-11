@@ -1,11 +1,9 @@
 use axum::{
     extract::Request,
-    http::{HeaderValue, Response},
+    http::HeaderValue,
     middleware::Next,
     response::IntoResponse,
 };
-use tower::ServiceBuilder;
-use tower_http::ServiceBuilderExt;
 
 use crate::config::TlsConfig;
 

@@ -1,6 +1,5 @@
 use axum::{
     extract::{Extension, Json as JsonExtractor, Multipart, Request},
-    http::HeaderMap,
     Json,
 };
 use base64::{engine::general_purpose, Engine as _};
