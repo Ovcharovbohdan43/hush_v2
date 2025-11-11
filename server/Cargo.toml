@@ -64,6 +64,7 @@ validator = { version = "0.18", features = ["derive"] }
 tokio-test = "0.4"
 mockall = "0.12"
 
+# Pin home to avoid edition2024 requirement
 [patch.crates-io]
-home = { git = "https://github.com/rust-lang/home", rev = "a7f3cbf2fc0f244324e84c8fa927ab1a0203f1b2" }
+home = "=0.5.4"
 
