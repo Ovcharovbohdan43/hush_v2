@@ -33,6 +33,6 @@ pub async fn hsts_middleware(
 
 /// Создает middleware layer для HSTS
 pub fn create_hsts_layer(config: TlsConfig) -> impl tower::Layer<axum::Router> + Clone {
-    axum::middleware::from_fn_with_state(config, hsts_middleware)
+    axum::middleware::from_fn_with_state::<TlsConfig, _, _>(config, hsts_middleware)
 }
 

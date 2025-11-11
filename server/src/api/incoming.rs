@@ -1,5 +1,6 @@
 use axum::{
-    extract::{Extension, Json as JsonExtractor, Multipart, HeaderMap, Uri},
+    extract::{Extension, Json as JsonExtractor, Multipart},
+    http::HeaderMap,
     Json,
 };
 use base64::{engine::general_purpose, Engine as _};
@@ -138,7 +139,7 @@ pub async fn handle_incoming_email(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
     headers: HeaderMap,
-    uri: Uri,
+    uri: axum::http::Uri,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== MAILGUN WEBHOOK RECEIVED ===");
@@ -240,7 +241,7 @@ pub async fn handle_incoming_email_json(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
     headers: HeaderMap,
-    uri: Uri,
+    uri: axum::http::Uri,
     JsonExtractor(payload): JsonExtractor<IncomingEmailWebhook>,
 ) -> Result<Json<serde_json::Value>> {
     // Verify webhook security before processing
@@ -264,7 +265,7 @@ pub async fn handle_brevo_webhook(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
     headers: HeaderMap,
-    uri: Uri,
+    uri: axum::http::Uri,
     JsonExtractor(mut payload): JsonExtractor<BrevoWebhookPayload>,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== BREVO WEBHOOK RECEIVED ===");
@@ -635,7 +636,7 @@ pub async fn handle_sendgrid_webhook(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
     headers: HeaderMap,
-    uri: Uri,
+    uri: axum::http::Uri,
     JsonExtractor(payload): JsonExtractor<SendGridWebhook>,
 ) -> Result<Json<serde_json::Value>> {
     // Verify webhook security before processing

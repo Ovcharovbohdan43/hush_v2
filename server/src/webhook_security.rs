@@ -158,16 +158,19 @@ fn verify_mailgun_signature(
 
     let signature: String = query_params
         .get("signature")
+        .cloned()
         .or_else(|| headers.get("x-mailgun-signature").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun signature".to_string()))?;
 
     let timestamp: String = query_params
         .get("timestamp")
+        .cloned()
         .or_else(|| headers.get("x-mailgun-timestamp").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun timestamp".to_string()))?;
 
     let token: String = query_params
         .get("token")
+        .cloned()
         .or_else(|| headers.get("x-mailgun-token").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun token".to_string()))?;
 
@@ -175,7 +178,7 @@ fn verify_mailgun_signature(
     // Allow 15 minutes window
     if let Ok(ts) = timestamp.parse::<i64>() {
         let now = chrono::Utc::now().timestamp();
-        let age = (now - ts).abs();
+        let age: i64 = (now - ts).abs();
         if age > 900 {
             // 15 minutes
             return Err(AppError::Auth(format!(
@@ -291,6 +294,7 @@ fn verify_brevo_secret(
 
     let provided_secret: String = query_params
         .get("secret")
+        .cloned()
         .or_else(|| {
             headers
                 .get("x-brevo-secret")
