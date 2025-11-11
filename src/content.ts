@@ -42,32 +42,123 @@
         e.preventDefault();
         e.stopPropagation();
         
-        // Запрашиваем создание алиаса у background script
-        chrome.runtime.sendMessage({ action: 'createAlias' }, (response) => {
-          if (response && response.alias) {
-            field.value = response.alias;
-            field.dispatchEvent(new Event('input', { bubbles: true }));
-            field.dispatchEvent(new Event('change', { bubbles: true }));
+        // Проверяем, что расширение все еще активно
+        if (!chrome.runtime?.id) {
+          console.warn('Extension context invalidated. Please reload the page.');
+          button.innerHTML = '⚠ Reload';
+          button.disabled = false;
+          setTimeout(() => {
+            button.innerHTML = '🛡️ Hush';
+          }, 2000);
+          return;
+        }
+        
+        // Визуальная обратная связь
+        const originalText = button.innerHTML;
+        button.innerHTML = '⏳...';
+        button.disabled = true;
+        
+        try {
+          // Запрашиваем создание алиаса у background script
+          chrome.runtime.sendMessage({ action: 'createAlias' }, (response) => {
+            // Проверяем наличие ошибок Chrome runtime
+            if (chrome.runtime.lastError) {
+              const error = chrome.runtime.lastError.message || '';
+              console.error('Chrome runtime error:', chrome.runtime.lastError);
+              
+              // Если контекст недействителен, предлагаем перезагрузить страницу
+              if (error.includes('Extension context invalidated') || error.includes('message port closed')) {
+                button.innerHTML = '⚠ Reload Page';
+                button.disabled = false;
+                button.onclick = () => window.location.reload();
+                return;
+              }
+              
+              button.innerHTML = originalText;
+              button.disabled = false;
+              return;
+            }
+            
+            if (response && response.error) {
+              console.error('Alias creation error:', response.error);
+              button.innerHTML = '❌ Error';
+              button.disabled = false;
+              setTimeout(() => {
+                button.innerHTML = originalText;
+              }, 2000);
+              return;
+            }
+            
+            if (response && response.alias) {
+              field.value = response.alias;
+              field.dispatchEvent(new Event('input', { bubbles: true }));
+              field.dispatchEvent(new Event('change', { bubbles: true }));
+              button.innerHTML = '✓ Done';
+              setTimeout(() => {
+                button.innerHTML = originalText;
+                button.disabled = false;
+              }, 1000);
+            } else {
+              button.innerHTML = originalText;
+              button.disabled = false;
+            }
+          });
+        } catch (error: any) {
+          console.error('Error in content script:', error);
+          
+          // Проверяем, не связана ли ошибка с недействительным контекстом
+          if (error?.message?.includes('Extension context invalidated') || 
+              error?.message?.includes('message port closed')) {
+            button.innerHTML = '⚠ Reload Page';
+            button.disabled = false;
+            button.onclick = () => window.location.reload();
+            return;
           }
-        });
+          
+          button.innerHTML = originalText;
+          button.disabled = false;
+        }
       });
     });
   }
 
+  // Проверяем доступность расширения перед запуском
+  if (!chrome.runtime?.id) {
+    console.warn('Extension context invalidated. Content script will not run.');
+    return;
+  }
+
   // Наблюдаем за изменениями DOM
   const observer = new MutationObserver(() => {
+    // Проверяем контекст перед добавлением кнопок
+    if (!chrome.runtime?.id) {
+      console.warn('Extension context invalidated during DOM observation.');
+      observer.disconnect();
+      return;
+    }
     addHushButtons();
   });
 
   // Запускаем при загрузке
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      addHushButtons();
-      observer.observe(document.body, { childList: true, subtree: true });
+      if (chrome.runtime?.id) {
+        addHushButtons();
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
     });
   } else {
-    addHushButtons();
-    observer.observe(document.body, { childList: true, subtree: true });
+    if (chrome.runtime?.id) {
+      addHushButtons();
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
+  
+  // Слушаем события перезагрузки расширения
+  chrome.runtime.onConnect.addListener((port) => {
+    port.onDisconnect.addListener(() => {
+      console.warn('Extension disconnected. Please reload the page.');
+    });
+  });
 })();
 

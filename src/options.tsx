@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import { Shield, Save, Check } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
 import { Switch } from './components/ui/switch';
 import { Alert, AlertDescription } from './components/ui/alert';
-import { useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { apiClient } from './lib/api';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
+import './index.css';
 
-export default function Options() {
+function OptionsContent() {
   const { isAuthenticated, login, register, logout } = useAuth();
   const [saved, setSaved] = useState(false);
   const [limitPerDay, setLimitPerDay] = useState('10');
@@ -18,6 +20,12 @@ export default function Options() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
+  
+  // Target email state
+  const [targetEmail, setTargetEmail] = useState('');
+  const [targetEmailVerified, setTargetEmailVerified] = useState(false);
+  const [targetEmailLoading, setTargetEmailLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   useEffect(() => {
     // Загружаем настройки из chrome.storage
@@ -26,7 +34,49 @@ export default function Options() {
       if (result.autoInsert !== undefined) setAutoInsert(result.autoInsert);
       if (result.apiUrl) setApiUrl(result.apiUrl);
     });
-  }, []);
+    
+    // Загружаем target email если авторизованы
+    if (isAuthenticated) {
+      loadTargetEmail();
+    }
+  }, [isAuthenticated]);
+  
+  const loadTargetEmail = async () => {
+    try {
+      setTargetEmailLoading(true);
+      const target = await apiClient.getTargetEmail();
+      if (target.email) {
+        setTargetEmail(target.email);
+        setTargetEmailVerified(target.verified);
+      }
+    } catch (error) {
+      console.error('Failed to load target email:', error);
+    } finally {
+      setTargetEmailLoading(false);
+    }
+  };
+  
+  const handleSaveTargetEmail = async () => {
+    if (!targetEmail.trim()) {
+      toast.error('Please enter a target email address');
+      return;
+    }
+    
+    try {
+      setTargetEmailLoading(true);
+      await apiClient.requestVerification(targetEmail.trim());
+      setVerificationSent(true);
+      toast.success('Verification email sent! Please check your inbox.');
+      setTimeout(() => {
+        setVerificationSent(false);
+        loadTargetEmail();
+      }, 3000);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save target email');
+    } finally {
+      setTargetEmailLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     await chrome.storage.sync.set({
@@ -167,6 +217,64 @@ export default function Options() {
                 />
               </div>
 
+              {/* Target Email */}
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="target-email" className="text-slate-700 text-sm font-medium">
+                    Target Email Address
+                  </Label>
+                  <p className="text-slate-500 text-xs">
+                    Your real email address where forwarded emails will be sent. You'll need to verify this email.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="target-email"
+                      type="email"
+                      placeholder="your.email@example.com"
+                      value={targetEmail}
+                      onChange={(e) => setTargetEmail(e.target.value)}
+                      className="h-12 rounded-xl flex-1"
+                      disabled={targetEmailLoading}
+                    />
+                    <Button
+                      onClick={handleSaveTargetEmail}
+                      disabled={targetEmailLoading || !targetEmail.trim()}
+                      className="h-12 px-6 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl"
+                    >
+                      {targetEmailLoading ? 'Saving...' : targetEmailVerified ? 'Update' : 'Save & Verify'}
+                    </Button>
+                  </div>
+                  {targetEmail && (
+                    <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
+                      targetEmailVerified 
+                        ? 'bg-green-50 text-green-700 border border-green-200' 
+                        : verificationSent
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                    }`}>
+                      {targetEmailVerified ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Email verified. Forwarding is active.</span>
+                        </>
+                      ) : verificationSent ? (
+                        <>
+                          <Shield className="w-4 h-4" />
+                          <span>Verification email sent! Please check your inbox and click the verification link.</span>
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-4 h-4" />
+                          <span>Email not verified. Please save and verify to enable forwarding.</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* API Base URL */}
               <div className="space-y-3">
                 <div>
@@ -214,4 +322,19 @@ export default function Options() {
       </div>
     </div>
   );
+}
+
+function Options() {
+  return (
+    <AuthProvider>
+      <OptionsContent />
+      <Toaster />
+    </AuthProvider>
+  );
+}
+
+// Инициализация React приложения
+const root = document.getElementById('root');
+if (root) {
+  createRoot(root).render(<Options />);
 }

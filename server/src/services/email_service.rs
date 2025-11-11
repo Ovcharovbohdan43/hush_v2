@@ -205,16 +205,17 @@ impl EmailService {
         attachments: &[crate::api::incoming::EmailAttachment],
     ) -> Result<()> {
         info!(
-            "Forwarding email from {} to {} with {} attachments",
-            from,
-            to,
-            attachments.len()
+            "=== EMAIL SERVICE: Forwarding email ===\n  From: {}\n  To: {}\n  Subject: {}\n  Attachments: {}\n  SMTP Host: {}\n  SMTP Port: {}\n  SMTP From: {}",
+            from, to, subject, attachments.len(), config.smtp_host, config.smtp_port, config.smtp_from
         );
 
         let from_addr = config.smtp_from.trim();
         if from_addr.is_empty() {
+            error!("SMTP_FROM is empty - cannot send email");
             return Err(AppError::Internal("SMTP_FROM is empty".to_string()));
         }
+        
+        info!("Using SMTP From address: '{}'", from_addr);
 
         let mut builder = MessageBuilder::new()
             .from(from_addr.parse().map_err(|e| {
@@ -306,31 +307,35 @@ impl EmailService {
         let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
 
         info!(
-            "Connecting to SMTP server: {}:{}",
-            config.smtp_host, config.smtp_port
+            "Connecting to SMTP server: {}:{} (username: {})",
+            config.smtp_host, config.smtp_port, config.smtp_username
         );
 
         let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
             .map_err(|e| {
-                error!("Failed to create SMTP transport: {}", e);
+                error!("Failed to create SMTP transport to {}:{} - {}", config.smtp_host, config.smtp_port, e);
                 AppError::Internal(format!("Failed to create SMTP transport: {}", e))
             })?
             .port(config.smtp_port)
             .credentials(creds)
             .build();
 
-        mailer.send(email).await.map_err(|e| {
-            error!("Failed to forward email: {}", e);
-            AppError::Internal(format!("Failed to forward email: {}", e))
-        })?;
-
-        info!(
-            "Email forwarded successfully from {} to {} with {} attachments",
-            from,
-            to,
-            attachments.len()
-        );
-        Ok(())
+        info!("Sending email through SMTP...");
+        let send_result = mailer.send(email).await;
+        
+        match send_result {
+            Ok(_) => {
+                info!(
+                    "✓✓✓ Email forwarded successfully from {} to {} with {} attachments ✓✓✓",
+                    from, to, attachments.len()
+                );
+                Ok(())
+            },
+            Err(e) => {
+                error!("✗✗✗ Failed to forward email from {} to {}: {} ✗✗✗", from, to, e);
+                Err(AppError::Internal(format!("Failed to forward email: {}", e)))
+            }
+        }
     }
 
     /// Send bounce notification email to user

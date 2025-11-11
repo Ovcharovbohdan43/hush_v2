@@ -14,7 +14,7 @@ use axum::{
     http::{StatusCode, Uri},
     response::Redirect,
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -138,6 +138,18 @@ async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router
         .route(
             "/api/v1/incoming/brevo",
             post(api::incoming::handle_brevo_webhook),
+        )
+        // Test endpoint для проверки доступности webhook
+        .route(
+            "/api/v1/incoming/test",
+            get(|| async {
+                info!("Webhook test endpoint accessed");
+                (StatusCode::OK, Json(serde_json::json!({
+                    "status": "ok",
+                    "message": "Webhook endpoint is accessible",
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                })))
+            }),
         )
         .layer(webhook_rate_limiter);
 

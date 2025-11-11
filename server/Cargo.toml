@@ -50,7 +50,7 @@ governor = "0.10"
 tower_governor = "0.8"
 
 # TLS/SSL support
-rustls = { version = "0.23", features = ["dangerous_configuration"] }
+rustls = "0.23"
 tokio-rustls = "0.25"
 rcgen = "0.13"
 rustls-pemfile = "2.0"

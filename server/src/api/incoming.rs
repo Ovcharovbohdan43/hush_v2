@@ -141,7 +141,10 @@ pub async fn handle_incoming_email(
     request: Request,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>> {
+    info!("=== MAILGUN WEBHOOK RECEIVED ===");
+    
     // Verify webhook security before processing
+    info!("Verifying webhook security...");
     verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Mailgun,
@@ -150,6 +153,8 @@ pub async fn handle_incoming_email(
         &[], // Body not available for multipart, but Mailgun signature is in query params/headers
     )
     .await?;
+    info!("Webhook security verified");
+    
     let mut form_data: HashMap<String, String> = HashMap::new();
     let mut attachments: Vec<EmailAttachment> = Vec::new();
 
@@ -222,6 +227,9 @@ pub async fn handle_incoming_email(
         message_headers: form_data.get("message-headers").cloned(),
         attachment_count: Some(attachments.len() as u32),
     };
+    
+    info!("Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}", 
+        payload.recipient, payload.sender, payload.subject, attachments.len());
 
     process_incoming_email_with_attachments(pool, config, payload, attachments).await
 }
@@ -257,7 +265,15 @@ pub async fn handle_brevo_webhook(
     request: Request,
     JsonExtractor(mut payload): JsonExtractor<BrevoWebhookPayload>,
 ) -> Result<Json<serde_json::Value>> {
+    info!("=== BREVO WEBHOOK RECEIVED ===");
+    info!("From: {:?}", payload.from);
+    info!("To: {:?}", payload.to);
+    info!("CC: {:?}", payload.cc);
+    info!("Subject: {}", payload.subject);
+    info!("Message ID: {:?}", payload.message_id);
+    
     // Verify webhook security before processing
+    info!("Verifying webhook security...");
     verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Brevo,
@@ -266,7 +282,10 @@ pub async fn handle_brevo_webhook(
         &[], // Body already consumed, but Brevo uses secret in headers/query params
     )
     .await?;
+    info!("Webhook security verified");
+    
     let sender = payload.from.email.clone();
+    info!("Extracted sender: {}", sender);
     if let Some(name) = payload.from.name.as_ref() {
         debug!("Brevo webhook sender display name: {}", name);
     }
@@ -280,6 +299,8 @@ pub async fn handle_brevo_webhook(
             AppError::Validation("Brevo payload missing recipient list".to_string())
         })?;
     let recipient = recipient_address.email.clone();
+    
+    info!("Extracted recipient: '{}'", recipient);
 
     let mut attachments: Vec<EmailAttachment> = Vec::new();
     let attachments_payload = std::mem::take(&mut payload.attachments);
@@ -379,6 +400,9 @@ pub async fn handle_brevo_webhook(
         message_headers,
         attachment_count: Some(attachments.len() as u32),
     };
+    
+    info!("Built IncomingEmailWebhook for Brevo:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}", 
+        incoming.recipient, incoming.sender, incoming.subject, attachments.len());
 
     process_incoming_email_with_attachments(pool, config, incoming, attachments).await
 }
@@ -391,13 +415,15 @@ async fn process_incoming_email_with_attachments(
     attachments: Vec<EmailAttachment>,
 ) -> Result<Json<serde_json::Value>> {
     info!(
-        "Received incoming email: {} -> {}",
-        payload.sender, payload.recipient
+        "=== INCOMING EMAIL START ===\nFrom: {}\nTo: {}\nSubject: {}\nAttachments: {}",
+        payload.sender, payload.recipient, payload.subject, attachments.len()
     );
 
     // Normalize recipient address (lowercase)
     let recipient = payload.recipient.to_lowercase().trim().to_string();
     let sender = payload.sender.to_lowercase().trim().to_string();
+    
+    info!("Normalized recipient: '{}', sender: '{}'", recipient, sender);
 
     // Detect if this is a bounce message
     let bounce_info = detect_bounce(
@@ -470,15 +496,19 @@ async fn process_incoming_email_with_attachments(
     };
 
     info!(
-        "Found alias: {} (user_id: {})",
-        alias.address, alias.user_id
+        "Found alias: {} (user_id: {}, status: {:?})",
+        alias.address, alias.user_id, alias.status
     );
 
     // Get target email for the user
+    info!("Looking up target email for user_id: {}", alias.user_id);
     let target = match TargetService::get_current(&pool, alias.user_id).await? {
-        Some(t) if t.verified => t,
-        Some(_) => {
-            warn!("Target email not verified for user: {}", alias.user_id);
+        Some(t) if t.verified => {
+            info!("Found verified target email: {} for user: {}", t.email, alias.user_id);
+            t
+        },
+        Some(t) => {
+            warn!("Target email exists but NOT verified: {} (user_id: {})", t.email, alias.user_id);
             // Log as rejected
             log_email(
                 &pool,
@@ -520,6 +550,16 @@ async fn process_incoming_email_with_attachments(
     };
 
     // Forward email to target address with attachments
+    info!(
+        "Attempting to forward email:\n  From: {}\n  To: {}\n  Subject: {}\n  Body plain: {} bytes\n  Body HTML: {} bytes\n  Attachments: {}",
+        sender,
+        target.email,
+        payload.subject,
+        payload.body_plain.as_ref().map(|b| b.len()).unwrap_or(0),
+        payload.body_html.as_ref().map(|b| b.len()).unwrap_or(0),
+        attachments.len()
+    );
+    
     let forward_result = EmailService::forward_email_with_attachments(
         &config,
         &sender,
@@ -535,7 +575,7 @@ async fn process_incoming_email_with_attachments(
     match forward_result {
         Ok(_) => {
             info!(
-                "Email forwarded successfully: {} -> {}",
+                "✓✓✓ Email forwarded successfully: {} -> {} ✓✓✓",
                 recipient, target.email
             );
 

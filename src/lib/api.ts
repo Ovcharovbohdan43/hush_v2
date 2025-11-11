@@ -130,7 +130,7 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    this.setAccessToken(response.access_token);
+    await this.setAccessToken(response.access_token);
     await this.saveToken('refresh_token', response.refresh_token);
     return response;
   }
@@ -140,7 +140,7 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ refresh_token: refreshToken }),
     });
-    this.setAccessToken(response.access_token);
+    await this.setAccessToken(response.access_token);
     return response;
   }
 
@@ -199,7 +199,13 @@ class ApiClient {
   // Target email endpoints
   async getTargetEmail(): Promise<TargetEmail> {
     const response = await this.request<any>('/api/v1/targets');
-    // API возвращает объект с полями email и verified
+    // API возвращает null если target email не установлен, или объект с полями email и verified
+    if (!response || response === null) {
+      return {
+        email: '',
+        verified: false,
+      };
+    }
     return {
       email: response.email || '',
       verified: response.verified || false,
@@ -220,9 +226,9 @@ class ApiClient {
   }
 
   // Token management
-  setAccessToken(token: string) {
+  async setAccessToken(token: string) {
     this.accessToken = token;
-    this.saveToken('access_token', token);
+    await this.saveToken('access_token', token);
   }
 
   async clearTokens() {
