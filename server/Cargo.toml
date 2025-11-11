@@ -64,7 +64,3 @@ validator = { version = "0.18", features = ["derive"] }
 tokio-test = "0.4"
 mockall = "0.12"
 
-# Pin home to avoid edition2024 requirement
-[patch.crates-io]
-home = "=0.5.4"
-
