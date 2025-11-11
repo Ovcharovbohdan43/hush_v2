@@ -135,8 +135,6 @@ async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router
                 })))
             }),
         )
-        .layer(axum::Extension(pool.clone()))
-        .layer(axum::Extension(config.clone()))
         .layer(webhook_rate_limiter);
 
     // Protected routes with rate limiting
