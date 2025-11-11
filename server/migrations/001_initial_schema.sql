@@ -1,4 +1,4 @@
--- Enable UUID extension
+﻿-- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types (idempotent)
