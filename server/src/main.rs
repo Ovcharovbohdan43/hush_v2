@@ -173,7 +173,10 @@ async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router
 
     // Add HSTS middleware if HTTPS is enabled
     if config.tls.enabled {
-        router = router.layer(crate::middleware::hsts::create_hsts_layer(config.tls.clone()));
+        router = router.layer(axum::middleware::from_fn_with_state(
+            config.tls.clone(),
+            crate::middleware::hsts::hsts_middleware,
+        ));
     }
 
     Ok(router)
