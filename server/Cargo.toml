@@ -60,10 +60,10 @@ futures = "0.3"
 # Validation
 validator = { version = "0.18", features = ["derive"] }
 
-# Pin home to avoid edition2024 requirement
-# home is pulled in transitively via sqlx-postgres -> etcetera
-[dependencies.home]
-version = "0.5.4"
+# Patch home to use older version that doesn't require edition2024
+# This overrides the transitive dependency from sqlx-postgres
+[patch.crates-io]
+home = { version = "=0.5.5", default-features = false }
 
 [dev-dependencies]
 tokio-test = "0.4"
