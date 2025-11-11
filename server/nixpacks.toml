@@ -6,8 +6,10 @@ providers = ["rust"]
 
 [phases.install]
 cmds = [
-  "rustup update stable",
+  "rustup install stable",
   "rustup default stable",
+  "rustup update stable",
+  "rustc --version",
   "cargo --version",
   "cargo build --release"
 ]
