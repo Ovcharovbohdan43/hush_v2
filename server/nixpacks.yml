@@ -1,0 +1,15 @@
+# Railway build configuration
+# This file tells Railway how to build the Rust project
+
+# Install latest Rust nightly before building
+install:
+  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+  - export PATH="$HOME/.cargo/bin:$PATH"
+  - rustup default nightly
+  - rustup update nightly
+  - cd server
+  - cargo build --release
+
+# Start command
+start: cd server && ./target/release/hush-v2-server
+
