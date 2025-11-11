@@ -23,10 +23,6 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::{info, Level, warn};
-use rustls::{ServerConfig, pki_types::{CertificateDer, PrivateKeyDer}};
-use rustls_pemfile::{certs, pkcs8_private_keys};
-use std::fs::File;
-use std::io::BufReader;
 
 use crate::config::Config;
 use crate::middleware::hsts::hsts_middleware;
