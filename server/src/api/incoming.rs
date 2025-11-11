@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Extension, Json as JsonExtractor, Multipart, Request},
+    extract::{Extension, Json as JsonExtractor, Multipart, HeaderMap, Uri},
     Json,
 };
 use base64::{engine::general_purpose, Engine as _};
@@ -137,7 +137,8 @@ pub struct BrevoWebhookPayload {
 pub async fn handle_incoming_email(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
-    request: Request,
+    headers: HeaderMap,
+    uri: Uri,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== MAILGUN WEBHOOK RECEIVED ===");
@@ -147,8 +148,8 @@ pub async fn handle_incoming_email(
     verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Mailgun,
-        request.headers(),
-        request.uri(),
+        &headers,
+        &uri,
         &[], // Body not available for multipart, but Mailgun signature is in query params/headers
     )
     .await?;
@@ -238,7 +239,8 @@ pub async fn handle_incoming_email(
 pub async fn handle_incoming_email_json(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
-    request: Request,
+    headers: HeaderMap,
+    uri: Uri,
     JsonExtractor(payload): JsonExtractor<IncomingEmailWebhook>,
 ) -> Result<Json<serde_json::Value>> {
     // Verify webhook security before processing
@@ -247,8 +249,8 @@ pub async fn handle_incoming_email_json(
     verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Mailgun,
-        request.headers(),
-        request.uri(),
+        &headers,
+        &uri,
         &[], // Body already consumed, but Mailgun signature verification uses query params
     )
     .await?;
@@ -261,7 +263,8 @@ pub async fn handle_incoming_email_json(
 pub async fn handle_brevo_webhook(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
-    request: Request,
+    headers: HeaderMap,
+    uri: Uri,
     JsonExtractor(mut payload): JsonExtractor<BrevoWebhookPayload>,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== BREVO WEBHOOK RECEIVED ===");
@@ -276,8 +279,8 @@ pub async fn handle_brevo_webhook(
     verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Brevo,
-        request.headers(),
-        request.uri(),
+        &headers,
+        &uri,
         &[], // Body already consumed, but Brevo uses secret in headers/query params
     )
     .await?;
@@ -631,7 +634,8 @@ async fn process_incoming_email_with_attachments(
 pub async fn handle_sendgrid_webhook(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
-    request: Request,
+    headers: HeaderMap,
+    uri: Uri,
     JsonExtractor(payload): JsonExtractor<SendGridWebhook>,
 ) -> Result<Json<serde_json::Value>> {
     // Verify webhook security before processing
@@ -640,8 +644,8 @@ pub async fn handle_sendgrid_webhook(
     verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::SendGrid,
-        request.headers(),
-        request.uri(),
+        &headers,
+        &uri,
         &[], // Body already consumed - signature verification may be limited
     )
     .await?;

@@ -158,20 +158,17 @@ fn verify_mailgun_signature(
 
     let signature: String = query_params
         .get("signature")
-        .or_else(|| headers.get("x-mailgun-signature").and_then(|h| h.to_str().ok()))
-        .map(|s| s.to_string())
+        .or_else(|| headers.get("x-mailgun-signature").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun signature".to_string()))?;
 
     let timestamp: String = query_params
         .get("timestamp")
-        .or_else(|| headers.get("x-mailgun-timestamp").and_then(|h| h.to_str().ok()))
-        .map(|s| s.to_string())
+        .or_else(|| headers.get("x-mailgun-timestamp").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun timestamp".to_string()))?;
 
     let token: String = query_params
         .get("token")
-        .or_else(|| headers.get("x-mailgun-token").and_then(|h| h.to_str().ok()))
-        .map(|s| s.to_string())
+        .or_else(|| headers.get("x-mailgun-token").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun token".to_string()))?;
 
     // Verify timestamp (prevent replay attacks)
@@ -298,8 +295,8 @@ fn verify_brevo_secret(
             headers
                 .get("x-brevo-secret")
                 .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
         })
-        .map(|s| s.to_string())
         .ok_or_else(|| AppError::Auth("Missing Brevo secret".to_string()))?;
 
     // Constant-time comparison

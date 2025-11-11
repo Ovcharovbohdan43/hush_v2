@@ -23,7 +23,6 @@ use tower_http::{
 use tracing::{info, Level, warn};
 
 use crate::config::Config;
-use crate::middleware::hsts::hsts_middleware;
 use crate::rate_limit::{
     create_auth_rate_limiter, create_protected_rate_limiter, create_public_rate_limiter,
     create_webhook_rate_limiter, RateLimitConfig,
@@ -174,10 +173,7 @@ async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router
 
     // Add HSTS middleware if HTTPS is enabled
     if config.tls.enabled {
-        router = router.layer(axum::middleware::from_fn_with_state(
-            config.tls.clone(),
-            hsts_middleware,
-        ));
+        router = router.layer(crate::middleware::hsts::create_hsts_layer(config.tls.clone()));
     }
 
     Ok(router)
