@@ -2,10 +2,14 @@ FROM rust:1.75 as builder
 
 WORKDIR /app
 
-# Copy only server directory
-COPY server/Cargo.toml server/Cargo.lock ./
-COPY server/src ./src
-COPY server/migrations ./migrations
+# Copy Cargo files first for better caching
+COPY Cargo.toml Cargo.lock ./
+
+# Copy source code
+COPY src ./src
+
+# Copy migrations if they exist
+COPY migrations ./migrations 2>/dev/null || true
 
 # Build the application
 RUN cargo build --release
