@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["macros", "multipart"] }
+axum = { version = "0.8", features = ["macros", "multipart"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
 
@@ -23,6 +23,11 @@ serde_json = "1.0"
 jsonwebtoken = "9.3"
 bcrypt = "0.15"
 rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+ipnet = "2.9"
+url = "2.5"
 
 # Configuration
 config = "0.14"
@@ -30,6 +35,7 @@ dotenv = "0.15"
 
 # Email
 lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "builder"] }
+base64 = "0.21"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
@@ -40,8 +46,20 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Rate limiting
-tower_governor = "0.1"
+governor = "0.10"
+tower_governor = "0.8"
+
+# TLS/SSL support
+rustls = { version = "0.23", features = ["dangerous_configuration"] }
+tokio-rustls = "0.25"
+rcgen = "0.13"
+rustls-pemfile = "2.0"
+futures = "0.3"
 
 # Validation
 validator = { version = "0.18", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.12"
 
