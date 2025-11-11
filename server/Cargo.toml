@@ -60,6 +60,11 @@ futures = "0.3"
 # Validation
 validator = { version = "0.18", features = ["derive"] }
 
+# Pin home to avoid edition2024 requirement
+# home is pulled in transitively via sqlx-postgres -> etcetera
+[dependencies.home]
+version = "0.5.4"
+
 [dev-dependencies]
 tokio-test = "0.4"
 mockall = "0.12"
