@@ -10,6 +10,7 @@ RUN rustup default nightly && \
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Cargo files
@@ -18,6 +19,9 @@ COPY Cargo.toml Cargo.lock* ./
 # Copy source code
 COPY src ./src
 COPY migrations ./migrations
+
+# Normalize line endings for SQL migrations (important for sqlx checksums)
+RUN find ./migrations -type f -name '*.sql' -exec dos2unix {} +
 
 # Build the application
 RUN cargo build --release
