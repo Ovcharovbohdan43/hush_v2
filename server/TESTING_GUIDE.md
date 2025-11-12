@@ -10,7 +10,7 @@ Health check: `http://localhost:3001/health` → `OK`
 
 ```powershell
 $body = @{
-    email = "test@example.com"
+    email = "test1@example.com"
     password = "TestPassword123!"
 } | ConvertTo-Json
 

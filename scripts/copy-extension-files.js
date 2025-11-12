@@ -29,3 +29,4 @@ if (fs.existsSync(iconsDir)) {
 console.log('\n✅ Extension files copied successfully!');
 console.log('📦 Extension is ready in build/ directory');
 
+

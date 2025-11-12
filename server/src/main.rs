@@ -141,11 +141,11 @@ async fn create_app(pool: sqlx::PgPool, config: Config) -> anyhow::Result<Router
             get(api::aliases::list).post(api::aliases::create),
         )
         .route(
-            "/api/v1/aliases/:id",
+            "/api/v1/aliases/{id}",
             axum::routing::delete(api::aliases::delete),
         )
-        .route("/api/v1/aliases/:id/toggle", post(api::aliases::toggle))
-        .route("/api/v1/aliases/:id/logs", get(api::aliases::logs))
+        .route("/api/v1/aliases/{id}/toggle", post(api::aliases::toggle))
+        .route("/api/v1/aliases/{id}/logs", get(api::aliases::logs))
         .route(
             "/api/v1/targets/request_verify",
             post(api::targets::request_verify),
