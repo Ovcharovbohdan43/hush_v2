@@ -1,12 +1,12 @@
 use crate::config::Config;
 use crate::error::{AppError, Result};
 use lettre::{
-    message::{header::ContentType, Attachment, Body, MessageBuilder, MultiPart, SinglePart},
+    message::{header::ContentType, Attachment, Body, Message, MessageBuilder, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
 };
 use std::str::FromStr;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 pub struct EmailService;
 
@@ -63,27 +63,7 @@ impl EmailService {
             )
             .map_err(|e| AppError::Internal(format!("Failed to build email: {}", e)))?;
 
-        let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
-
-        // For Brevo and most SMTP servers, we need STARTTLS
-        info!(
-            "Connecting to SMTP server: {}:{}",
-            config.smtp_host, config.smtp_port
-        );
-
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
-            .map_err(|e| {
-                error!("Failed to create SMTP transport: {}", e);
-                AppError::Internal(format!("Failed to create SMTP transport: {}", e))
-            })?
-            .port(config.smtp_port)
-            .credentials(creds)
-            .build();
-
-        mailer.send(email).await.map_err(|e| {
-            error!("Failed to send email: {}", e);
-            AppError::Internal(format!("Failed to send email: {}", e))
-        })?;
+        Self::send_with_fallback(config, email, "verification email").await?;
 
         info!("Verification email sent successfully to: {}", to);
         Ok(())
@@ -168,26 +148,7 @@ impl EmailService {
             .multipart(multipart)
             .map_err(|e| AppError::Internal(format!("Failed to build email: {}", e)))?;
 
-        let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
-
-        info!(
-            "Connecting to SMTP server: {}:{}",
-            config.smtp_host, config.smtp_port
-        );
-
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
-            .map_err(|e| {
-                error!("Failed to create SMTP transport: {}", e);
-                AppError::Internal(format!("Failed to create SMTP transport: {}", e))
-            })?
-            .port(config.smtp_port)
-            .credentials(creds)
-            .build();
-
-        mailer.send(email).await.map_err(|e| {
-            error!("Failed to forward email: {}", e);
-            AppError::Internal(format!("Failed to forward email: {}", e))
-        })?;
+        Self::send_with_fallback(config, email, "forwarded email").await?;
 
         info!("Email forwarded successfully from {} to {}", from, to);
         Ok(())
@@ -304,36 +265,23 @@ impl EmailService {
             .multipart(multipart)
             .map_err(|e| AppError::Internal(format!("Failed to build email: {}", e)))?;
 
-        let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
-
         info!(
-            "Connecting to SMTP server: {}:{} (username: {})",
-            config.smtp_host, config.smtp_port, config.smtp_username
+            "Sending email through SMTP (attachments: {}, username: {})",
+            attachments.len(),
+            config.smtp_username
         );
 
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
-            .map_err(|e| {
-                error!("Failed to create SMTP transport to {}:{} - {}", config.smtp_host, config.smtp_port, e);
-                AppError::Internal(format!("Failed to create SMTP transport: {}", e))
-            })?
-            .port(config.smtp_port)
-            .credentials(creds)
-            .build();
-
-        info!("Sending email through SMTP...");
-        let send_result = mailer.send(email).await;
-        
-        match send_result {
+        match Self::send_with_fallback(config, email, "forwarded email with attachments").await {
             Ok(_) => {
                 info!(
                     "✓✓✓ Email forwarded successfully from {} to {} with {} attachments ✓✓✓",
                     from, to, attachments.len()
                 );
                 Ok(())
-            },
+            }
             Err(e) => {
                 error!("✗✗✗ Failed to forward email from {} to {}: {} ✗✗✗", from, to, e);
-                Err(AppError::Internal(format!("Failed to forward email: {}", e)))
+                Err(e)
             }
         }
     }
@@ -368,23 +316,99 @@ impl EmailService {
             )
             .map_err(|e| AppError::Internal(format!("Failed to build email: {}", e)))?;
 
-        let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
-
-        let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_host)
-            .map_err(|e| {
-                error!("Failed to create SMTP transport: {}", e);
-                AppError::Internal(format!("Failed to create SMTP transport: {}", e))
-            })?
-            .port(config.smtp_port)
-            .credentials(creds)
-            .build();
-
-        mailer.send(email).await.map_err(|e| {
-            error!("Failed to send bounce notification: {}", e);
-            AppError::Internal(format!("Failed to send bounce notification: {}", e))
-        })?;
+        Self::send_with_fallback(config, email, "bounce notification").await?;
 
         info!("Bounce notification sent successfully to: {}", to);
         Ok(())
+    }
+
+    fn candidate_ports(config: &Config) -> Vec<u16> {
+        let mut ports = Vec::new();
+        ports.push(config.smtp_port);
+
+        for &fallback in &[587u16, 2525u16] {
+            if !ports.contains(&fallback) {
+                ports.push(fallback);
+            }
+        }
+
+        ports
+    }
+
+    async fn send_with_fallback(
+        config: &Config,
+        email: Message,
+        context: &str,
+    ) -> Result<()> {
+        let creds = Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
+        let host = config.smtp_host.trim();
+
+        if host.is_empty() {
+            return Err(AppError::Internal(
+                "SMTP_HOST is empty - cannot send email".to_string(),
+            ));
+        }
+
+        let ports = Self::candidate_ports(config);
+        let mut errors: Vec<String> = Vec::new();
+
+        for port in ports.iter().copied() {
+            info!(
+                "Attempting to send {} via SMTP {}:{} (username: {})",
+                context, host, port, config.smtp_username
+            );
+
+            let builder = match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(host) {
+                Ok(builder) => builder,
+                Err(e) => {
+                    let msg = format!(
+                        "Failed to create SMTP transport for {}:{} - {}",
+                        host, port, e
+                    );
+                    warn!("{}", msg);
+                    errors.push(msg);
+                    continue;
+                }
+            };
+
+            let mailer = builder
+                .port(port)
+                .credentials(creds.clone())
+                .build();
+
+            match mailer.send(email.clone()).await {
+                Ok(_) => {
+                    info!(
+                        "Successfully sent {} via SMTP {}:{}",
+                        context, host, port
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    let msg = format!(
+                        "Failed to send {} via {}:{} - {}",
+                        context, host, port, e
+                    );
+                    warn!("{}", msg);
+                    errors.push(msg);
+                }
+            }
+        }
+
+        error!(
+            "Unable to send {} via SMTP {} using ports {:?}. Errors: {}",
+            context,
+            host,
+            ports,
+            errors.join(" | ")
+        );
+
+        Err(AppError::Internal(format!(
+            "Failed to send {}: unable to reach SMTP server {} on ports {:?}. Last errors: {}",
+            context,
+            host,
+            ports,
+            errors.join(" | ")
+        )))
     }
 }
