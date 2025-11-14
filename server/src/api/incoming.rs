@@ -343,19 +343,6 @@ pub async fn handle_incoming_email(
     }
     info!("Webhook security verified");
 
-    // Filter attachments according to size limit
-    let mut filtered_attachments: Vec<EmailAttachment> = Vec::new();
-    for attachment in attachments {
-        if attachment.size as u64 > config.max_attachment_size {
-            warn!(
-                "Attachment {} exceeds size limit: {} > {}",
-                attachment.filename, attachment.size, config.max_attachment_size
-            );
-            continue;
-        }
-        filtered_attachments.push(attachment);
-    }
-
     info!(
         "Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}",
         payload.recipient,
