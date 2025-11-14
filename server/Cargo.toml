@@ -38,7 +38,6 @@ dotenv = "0.15"
 reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls"] }
 mime = "0.3"
 base64 = "0.21"
-async-trait = "0.1"
 
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }

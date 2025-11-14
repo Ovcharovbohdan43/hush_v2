@@ -1,6 +1,4 @@
-use async_trait::async_trait;
 use axum::{
-    body::Body,
     extract::{Extension, Form, FromRequest, Json as JsonExtractor, Multipart, Request},
     http::{header, HeaderMap, Uri},
     Json,
@@ -84,71 +82,40 @@ pub struct EmailAttachment {
     pub size: usize,
 }
 
-/// Parsed Mailgun webhook request supporting multiple content types
 #[derive(Debug)]
-struct MailgunRequest {
-    headers: HeaderMap,
-    uri: Uri,
+struct MailgunParsedRequest {
     payload: IncomingEmailWebhook,
     attachments: Vec<EmailAttachment>,
-    form_fields: HashMap<String, String>,
+    form_fields: Option<HashMap<String, String>>,
 }
 
-#[async_trait]
-impl<S> FromRequest<Body, S> for MailgunRequest
-where
-    S: Send + Sync,
-{
-    type Rejection = AppError;
+enum MailgunContentType {
+    Multipart,
+    FormUrlencoded,
+    Json,
+}
 
-    async fn from_request(req: Request, state: &S) -> std::result::Result<Self, Self::Rejection> {
-        let headers = req.headers().clone();
-        let uri = req.uri().clone();
-        let content_type = headers
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("")
-            .to_ascii_lowercase();
+fn detect_mailgun_content_type(raw: &str) -> MailgunContentType {
+    let normalized = raw
+        .split(';')
+        .next()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_default();
 
-        let mut req = Some(req);
-
-        let (payload, attachments, form_fields) = if content_type.starts_with("multipart/form-data")
-        {
-            parse_mailgun_multipart(req.take().unwrap(), state).await?
-        } else if content_type.starts_with("application/x-www-form-urlencoded") {
-            parse_mailgun_form(req.take().unwrap(), state).await?
-        } else if content_type.starts_with("application/json") {
-            let (payload, form_fields) = parse_mailgun_json(req.take().unwrap(), state).await?;
-            (payload, Vec::new(), form_fields)
-        } else {
-            return Err(AppError::Validation(format!(
-                "Unsupported Content-Type '{}' for Mailgun webhook",
-                content_type
-            )));
-        };
-
-        Ok(Self {
-            headers,
-            uri,
-            payload,
-            attachments,
-            form_fields,
-        })
+    if normalized.starts_with("multipart/form-data") {
+        MailgunContentType::Multipart
+    } else if normalized == "application/json" || normalized == "text/json" {
+        MailgunContentType::Json
+    } else {
+        MailgunContentType::FormUrlencoded
     }
 }
 
-async fn parse_mailgun_multipart<S>(
+async fn parse_mailgun_multipart_request(
     req: Request,
-    state: &S,
-) -> Result<(
-    IncomingEmailWebhook,
-    Vec<EmailAttachment>,
-    HashMap<String, String>,
-)>
-where
-    S: Send + Sync,
-{
-    let mut multipart = Multipart::from_request(req, state)
+    config: &Config,
+) -> Result<MailgunParsedRequest> {
+    let mut multipart = Multipart::from_request(req, &())
         .await
         .map_err(|e| AppError::Validation(format!("Failed to parse multipart: {}", e)))?;
 
@@ -178,6 +145,14 @@ where
             let data = field_data.to_vec();
             let size = data.len();
 
+            if size as u64 > config.max_attachment_size {
+                warn!(
+                    "Attachment {} exceeds size limit: {} > {}",
+                    filename, size, config.max_attachment_size
+                );
+                continue;
+            }
+
             attachments.push(EmailAttachment {
                 filename,
                 content_type,
@@ -193,21 +168,15 @@ where
     }
 
     let payload = build_incoming_payload(&form_data, attachments.len());
-    Ok((payload, attachments, form_data))
+    Ok(MailgunParsedRequest {
+        payload,
+        attachments,
+        form_fields: Some(form_data),
+    })
 }
 
-async fn parse_mailgun_form<S>(
-    req: Request,
-    state: &S,
-) -> Result<(
-    IncomingEmailWebhook,
-    Vec<EmailAttachment>,
-    HashMap<String, String>,
-)>
-where
-    S: Send + Sync,
-{
-    let Form(mut form_data) = Form::<HashMap<String, String>>::from_request(req, state)
+async fn parse_mailgun_form_request(req: Request) -> Result<MailgunParsedRequest> {
+    let Form(mut form_data) = Form::<HashMap<String, String>>::from_request(req, &())
         .await
         .map_err(|e| AppError::Validation(format!("Failed to parse form data: {}", e)))?;
 
@@ -220,21 +189,27 @@ where
     }
 
     let payload = build_incoming_payload(&form_data, 0);
-    Ok((payload, Vec::new(), form_data))
+    Ok(MailgunParsedRequest {
+        payload,
+        attachments: Vec::new(),
+        form_fields: Some(form_data),
+    })
 }
 
-async fn parse_mailgun_json<S>(
-    req: Request,
-    state: &S,
-) -> Result<(IncomingEmailWebhook, HashMap<String, String>)>
-where
-    S: Send + Sync,
-{
-    let JsonExtractor(payload) = JsonExtractor::<IncomingEmailWebhook>::from_request(req, state)
+async fn parse_mailgun_json_request(req: Request) -> Result<MailgunParsedRequest> {
+    let JsonExtractor(mut payload) = JsonExtractor::<IncomingEmailWebhook>::from_request(req, &())
         .await
         .map_err(|e| AppError::Validation(format!("Invalid JSON payload: {}", e)))?;
 
-    Ok((payload, HashMap::new()))
+    if payload.attachment_count.is_none() {
+        payload.attachment_count = Some(0);
+    }
+
+    Ok(MailgunParsedRequest {
+        payload,
+        attachments: Vec::new(),
+        form_fields: None,
+    })
 }
 
 fn build_incoming_payload(
@@ -321,19 +296,33 @@ pub struct BrevoWebhookPayload {
 pub async fn handle_incoming_email(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
-    mailgun_request: MailgunRequest,
+    headers: HeaderMap,
+    uri: axum::http::Uri,
+    req: Request,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== MAILGUN WEBHOOK RECEIVED ===");
 
-    let MailgunRequest {
-        headers,
-        uri,
-        mut payload,
+    let content_type_header = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+
+    let parsed_request = match detect_mailgun_content_type(content_type_header) {
+        MailgunContentType::Multipart => parse_mailgun_multipart_request(req, &config).await?,
+        MailgunContentType::FormUrlencoded => parse_mailgun_form_request(req).await?,
+        MailgunContentType::Json => parse_mailgun_json_request(req).await?,
+    };
+
+    let MailgunParsedRequest {
+        payload,
         attachments,
         form_fields,
-    } = mailgun_request;
+    } = parsed_request;
 
-    let field_keys: Vec<&str> = form_fields.keys().map(|k| k.as_str()).collect();
+    let field_keys: Vec<String> = form_fields
+        .as_ref()
+        .map(|fields| fields.keys().cloned().collect())
+        .unwrap_or_else(Vec::new);
     info!(
         "Verifying webhook security... form fields present: {:?}",
         field_keys
@@ -345,7 +334,7 @@ pub async fn handle_incoming_email(
         &headers,
         &uri,
         &[],
-        Some(&form_fields),
+        form_fields.as_ref(),
     )
     .await
     {
@@ -367,17 +356,15 @@ pub async fn handle_incoming_email(
         filtered_attachments.push(attachment);
     }
 
-    payload.attachment_count = Some(filtered_attachments.len() as u32);
-
     info!(
         "Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}",
         payload.recipient,
         payload.sender,
         payload.subject,
-        filtered_attachments.len()
+        attachments.len()
     );
 
-    process_incoming_email_with_attachments(pool, config, payload, filtered_attachments).await
+    process_incoming_email_with_attachments(pool, config, payload, attachments).await
 }
 
 /// Process incoming email webhook (JSON format)
