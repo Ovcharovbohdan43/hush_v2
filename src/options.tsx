@@ -16,7 +16,6 @@ function OptionsContent() {
   const [saved, setSaved] = useState(false);
   const [limitPerDay, setLimitPerDay] = useState('10');
   const [autoInsert, setAutoInsert] = useState(false);
-  const [apiUrl, setApiUrl] = useState('http://localhost:3001');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
@@ -29,10 +28,9 @@ function OptionsContent() {
 
   useEffect(() => {
     // Загружаем настройки из chrome.storage
-    chrome.storage.sync.get(['limitPerDay', 'autoInsert', 'apiUrl'], (result) => {
+    chrome.storage.sync.get(['limitPerDay', 'autoInsert'], (result) => {
       if (result.limitPerDay) setLimitPerDay(result.limitPerDay);
       if (result.autoInsert !== undefined) setAutoInsert(result.autoInsert);
-      if (result.apiUrl) setApiUrl(result.apiUrl);
     });
     
     // Загружаем target email если авторизованы
@@ -82,7 +80,6 @@ function OptionsContent() {
     await chrome.storage.sync.set({
       limitPerDay,
       autoInsert,
-      apiUrl,
     });
     setSaved(true);
     toast.success('Settings saved!');
@@ -275,24 +272,6 @@ function OptionsContent() {
                 </div>
               </div>
 
-              {/* API Base URL */}
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="api-url" className="text-slate-700 text-sm font-medium">
-                    API Base URL
-                  </Label>
-                  <p className="text-slate-500 text-xs">
-                    The endpoint for generating and managing email aliases
-                  </p>
-                </div>
-                <Input
-                  id="api-url"
-                  type="url"
-                  value={apiUrl}
-                  onChange={(e) => setApiUrl(e.target.value)}
-                  className="h-12 rounded-xl font-mono text-xs"
-                />
-              </div>
             </>
           )}
 
@@ -304,7 +283,6 @@ function OptionsContent() {
                 onClick={() => {
                   setLimitPerDay('10');
                   setAutoInsert(false);
-                  setApiUrl('http://localhost:3001');
                 }}
               >
                 Reset to Defaults
