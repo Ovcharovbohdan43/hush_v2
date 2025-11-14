@@ -18,28 +18,28 @@ postgresql://user:password@host:5432/database?sslmode=require
 JWT_SECRET=your-super-secret-key-min-32-chars-change-this-in-production
 ```
 
-### 4. SMTP_HOST
-SMTP сервер для отправки писем (Brevo):
-```
-SMTP_HOST=smtp-relay.brevo.com
-```
-
-### 5. SMTP_USERNAME
-Ваш SMTP логин от Brevo:
-```
-SMTP_USERNAME=your-smtp-username@smtp-brevo.com
-```
-
-### 6. SMTP_PASSWORD
-Ваш SMTP пароль от Brevo:
-```
-SMTP_PASSWORD=your-smtp-password-here
-```
-
-### 7. SMTP_FROM
-Email адрес отправителя (должен быть верифицирован в Brevo):
+### 4. SMTP_FROM
+Email адрес отправителя (используется в Mailgun API, должен быть верифицирован):
 ```
 SMTP_FROM=noreply@hush.autos
+```
+
+### 5. MAILGUN_API_KEY
+HTTP API ключ из Mailgun:
+```
+MAILGUN_API_KEY=key-xxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 6. MAILGUN_DOMAIN
+Домен Mailgun, от имени которого отправляем письма:
+```
+MAILGUN_DOMAIN=hush.autos
+```
+
+### 7. (Опционально) MAILGUN_API_BASE_URL
+По умолчанию используется `https://api.mailgun.net`. Для EU-региона укажите:
+```
+MAILGUN_API_BASE_URL=https://api.eu.mailgun.net
 ```
 
 ### 8. HUSH_DOMAIN
@@ -78,13 +78,12 @@ REFRESH_TOKEN_EXPIRES_IN=604800
 ## Минимальный набор (5 обязательных):
 
 1. ✅ `JWT_SECRET` - обязательно!
-2. ✅ `SMTP_HOST` - для отправки писем
-3. ✅ `SMTP_USERNAME` - для отправки писем
-4. ✅ `SMTP_PASSWORD` - для отправки писем
-5. ✅ `SMTP_FROM` - адрес отправителя
-6. ✅ `HUSH_DOMAIN` - домен алиасов
-7. ✅ `API_BASE_URL` - ваш Railway URL
-8. ✅ `WEBHOOK_SECURITY_ENABLED=false` - для тестирования
+2. ✅ `SMTP_FROM` - адрес отправителя
+3. ✅ `MAILGUN_API_KEY` - ключ API Mailgun
+4. ✅ `MAILGUN_DOMAIN` - домен Mailgun
+5. ✅ `HUSH_DOMAIN` - домен алиасов
+6. ✅ `API_BASE_URL` - ваш Railway URL
+7. ✅ `WEBHOOK_SECURITY_ENABLED=false` - для тестирования
 
 **DATABASE_URL и PORT** Railway установит автоматически при добавлении PostgreSQL.
 
@@ -112,6 +111,7 @@ curl https://your-railway-url.railway.app/health
 ## Важно:
 
 - `API_BASE_URL` должен быть **публичным URL** вашего Railway сервиса
-- `SMTP_FROM` должен быть **верифицирован** в Brevo
+- `SMTP_FROM` должен быть **верифицирован** в Mailgun
+- `MAILGUN_API_KEY` и `MAILGUN_DOMAIN` выдаются в Mailgun
 - `JWT_SECRET` должен быть **случайной строкой** минимум 32 символа
 

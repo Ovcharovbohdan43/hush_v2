@@ -14,6 +14,9 @@ pub struct Config {
     pub smtp_from: String,
     pub hush_domain: String,
     pub api_base_url: String,
+    pub mailgun_api_base_url: String,
+    pub mailgun_api_key: String,
+    pub mailgun_domain: String,
     /// Maximum attachment size in bytes (default: 10MB)
     pub max_attachment_size: u64,
     /// Webhook security configuration
@@ -89,6 +92,10 @@ impl Config {
             hush_domain: env::var("HUSH_DOMAIN").unwrap_or_else(|_| "hush.example".to_string()),
             api_base_url: env::var("API_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:3001".to_string()),
+            mailgun_api_base_url: env::var("MAILGUN_API_BASE_URL")
+                .unwrap_or_else(|_| "https://api.mailgun.net".to_string()),
+            mailgun_api_key: env::var("MAILGUN_API_KEY").unwrap_or_else(|_| "".to_string()),
+            mailgun_domain: env::var("MAILGUN_DOMAIN").unwrap_or_else(|_| "".to_string()),
             max_attachment_size: env::var("MAX_ATTACHMENT_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())

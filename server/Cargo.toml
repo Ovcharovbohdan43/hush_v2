@@ -34,8 +34,8 @@ url = "2.5"
 config = "0.14"
 dotenv = "0.15"
 
-# Email
-lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "builder"] }
+# Email / HTTP
+reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls"] }
 base64 = "0.21"
 
 # Utilities
