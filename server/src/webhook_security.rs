@@ -4,6 +4,7 @@ use axum::http::{HeaderMap, Uri};
 use hmac::{Hmac, Mac};
 use ipnet::IpNet;
 use sha2::Sha256;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use tracing::{debug, warn};
 
@@ -16,6 +17,7 @@ pub async fn verify_webhook_security(
     headers: &HeaderMap,
     uri: &Uri,
     body: &[u8],
+    form_fields: Option<&HashMap<String, String>>,
 ) -> Result<()> {
     // Skip security checks if disabled (for development)
     if !config.enabled {
@@ -50,7 +52,9 @@ pub async fn verify_webhook_security(
 
     // Verify signature/secret based on provider
     match provider {
-        WebhookProvider::Mailgun => verify_mailgun_signature(config, headers, uri, body)?,
+        WebhookProvider::Mailgun => {
+            verify_mailgun_signature(config, headers, uri, form_fields)?
+        }
         WebhookProvider::SendGrid => verify_sendgrid_signature(config, headers, body)?,
         WebhookProvider::Brevo => verify_brevo_secret(config, headers, uri)?,
     }
@@ -157,7 +161,7 @@ fn verify_mailgun_signature(
     config: &WebhookSecurityConfig,
     headers: &HeaderMap,
     uri: &Uri,
-    _body: &[u8],
+    form_fields: Option<&HashMap<String, String>>,
 ) -> Result<()> {
     let secret = config
         .mailgun_secret
@@ -178,19 +182,43 @@ fn verify_mailgun_signature(
     let signature: String = query_params
         .get("signature")
         .cloned()
-        .or_else(|| headers.get("x-mailgun-signature").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
+        .or_else(|| {
+            headers
+                .get("x-mailgun-signature")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| {
+            form_fields
+                .and_then(|fields| fields.get("signature").cloned())
+        })
         .ok_or_else(|| AppError::Auth("Missing Mailgun signature".to_string()))?;
 
     let timestamp: String = query_params
         .get("timestamp")
         .cloned()
-        .or_else(|| headers.get("x-mailgun-timestamp").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
+        .or_else(|| {
+            headers
+                .get("x-mailgun-timestamp")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| {
+            form_fields
+                .and_then(|fields| fields.get("timestamp").cloned())
+        })
         .ok_or_else(|| AppError::Auth("Missing Mailgun timestamp".to_string()))?;
 
     let token: String = query_params
         .get("token")
         .cloned()
-        .or_else(|| headers.get("x-mailgun-token").and_then(|h| h.to_str().ok()).map(|s| s.to_string()))
+        .or_else(|| {
+            headers
+                .get("x-mailgun-token")
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .or_else(|| form_fields.and_then(|fields| fields.get("token").cloned()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun token".to_string()))?;
 
     // Verify timestamp (prevent replay attacks)

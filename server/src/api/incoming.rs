@@ -143,19 +143,7 @@ pub async fn handle_incoming_email(
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== MAILGUN WEBHOOK RECEIVED ===");
-    
-    // Verify webhook security before processing
-    info!("Verifying webhook security...");
-    verify_webhook_security(
-        &config.webhook_security,
-        WebhookProvider::Mailgun,
-        &headers,
-        &uri,
-        &[], // Body not available for multipart, but Mailgun signature is in query params/headers
-    )
-    .await?;
-    info!("Webhook security verified");
-    
+
     let mut form_data: HashMap<String, String> = HashMap::new();
     let mut attachments: Vec<EmailAttachment> = Vec::new();
 
@@ -228,6 +216,19 @@ pub async fn handle_incoming_email(
         message_headers: form_data.get("message-headers").cloned(),
         attachment_count: Some(attachments.len() as u32),
     };
+
+    // Verify webhook security now that we have the multipart fields (signature/timestamp/token)
+    info!("Verifying webhook security...");
+    verify_webhook_security(
+        &config.webhook_security,
+        WebhookProvider::Mailgun,
+        &headers,
+        &uri,
+        &[],
+        Some(&form_data),
+    )
+    .await?;
+    info!("Webhook security verified");
     
     info!("Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}", 
         payload.recipient, payload.sender, payload.subject, attachments.len());
@@ -253,6 +254,7 @@ pub async fn handle_incoming_email_json(
         &headers,
         &uri,
         &[], // Body already consumed, but Mailgun signature verification uses query params
+        None,
     )
     .await?;
 
@@ -283,6 +285,7 @@ pub async fn handle_brevo_webhook(
         &headers,
         &uri,
         &[], // Body already consumed, but Brevo uses secret in headers/query params
+        None,
     )
     .await?;
     info!("Webhook security verified");
@@ -648,6 +651,7 @@ pub async fn handle_sendgrid_webhook(
         &headers,
         &uri,
         &[], // Body already consumed - signature verification may be limited
+        None,
     )
     .await?;
     // Convert SendGrid format to our format
