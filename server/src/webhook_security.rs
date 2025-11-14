@@ -23,11 +23,30 @@ pub async fn verify_webhook_security(
         return Ok(());
     }
 
-    // Extract client IP from headers
-    let client_ip = extract_client_ip(headers)?;
+    // Extract client IP from headers (if provided)
+    let client_ip = match extract_client_ip(headers) {
+        Ok(ip) => {
+            debug!("Resolved client IP for webhook: {}", ip);
+            Some(ip)
+        }
+        Err(e) => {
+            warn!(
+                "Unable to determine client IP for {:?} webhook: {}. Skipping IP whitelist check.",
+                provider, e
+            );
+            None
+        }
+    };
 
-    // Verify IP whitelist
-    verify_ip_whitelist(config, provider, &client_ip)?;
+    // Verify IP whitelist when we have an IP
+    if let Some(ip) = client_ip {
+        verify_ip_whitelist(config, provider, &ip)?;
+    } else {
+        warn!(
+            "Skipping IP whitelist verification for {:?} webhook because no client IP was provided.",
+            provider
+        );
+    }
 
     // Verify signature/secret based on provider
     match provider {
