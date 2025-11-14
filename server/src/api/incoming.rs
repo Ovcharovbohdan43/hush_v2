@@ -1,6 +1,7 @@
 use axum::{
-    extract::{Extension, Json as JsonExtractor, Multipart},
-    http::HeaderMap,
+    async_trait,
+    extract::{Extension, Form, FromRequest, Json as JsonExtractor, Multipart},
+    http::{header, HeaderMap, Uri},
     Json,
 };
 use base64::{engine::general_purpose, Engine as _};
@@ -82,6 +83,196 @@ pub struct EmailAttachment {
     pub size: usize,
 }
 
+/// Parsed Mailgun webhook request supporting multiple content types
+#[derive(Debug)]
+struct MailgunRequest {
+    headers: HeaderMap,
+    uri: Uri,
+    payload: IncomingEmailWebhook,
+    attachments: Vec<EmailAttachment>,
+    form_fields: HashMap<String, String>,
+}
+
+#[async_trait]
+impl<S> FromRequest<S> for MailgunRequest
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request(
+        req: axum::http::Request<axum::body::Body>,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let headers = req.headers().clone();
+        let uri = req.uri().clone();
+        let content_type = headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        let mut req = Some(req);
+
+        let (payload, attachments, form_fields) = if content_type.starts_with("multipart/form-data")
+        {
+            parse_mailgun_multipart(req.take().unwrap(), state).await?
+        } else if content_type.starts_with("application/x-www-form-urlencoded") {
+            parse_mailgun_form(req.take().unwrap(), state).await?
+        } else if content_type.starts_with("application/json") {
+            let (payload, form_fields) = parse_mailgun_json(req.take().unwrap(), state).await?;
+            (payload, Vec::new(), form_fields)
+        } else {
+            return Err(AppError::Validation(format!(
+                "Unsupported Content-Type '{}' for Mailgun webhook",
+                content_type
+            )));
+        };
+
+        Ok(Self {
+            headers,
+            uri,
+            payload,
+            attachments,
+            form_fields,
+        })
+    }
+}
+
+async fn parse_mailgun_multipart<S>(
+    req: axum::http::Request<axum::body::Body>,
+    state: &S,
+) -> Result<
+    (
+        IncomingEmailWebhook,
+        Vec<EmailAttachment>,
+        HashMap<String, String>,
+    ),
+    AppError,
+>
+where
+    S: Send + Sync,
+{
+    let mut multipart = Multipart::from_request(req, state)
+        .await
+        .map_err(|e| AppError::Validation(format!("Failed to parse multipart: {}", e)))?;
+
+    let mut form_data: HashMap<String, String> = HashMap::new();
+    let mut attachments: Vec<EmailAttachment> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::Validation(format!("Failed to parse multipart field: {}", e)))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        let file_name = field.file_name().map(|name| name.to_string());
+        let content_type = field.content_type().map(|ct| ct.to_string());
+        let field_data = field.bytes().await.map_err(|e| {
+            AppError::Validation(format!(
+                "Failed to read multipart field '{}': {}",
+                field_name, e
+            ))
+        })?;
+
+        if field_name.starts_with("attachment") {
+            let filename =
+                file_name.unwrap_or_else(|| format!("attachment_{}.bin", attachments.len() + 1));
+            let content_type =
+                content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+            let data = field_data.to_vec();
+            let size = data.len();
+
+            attachments.push(EmailAttachment {
+                filename,
+                content_type,
+                data,
+                size,
+            });
+        } else {
+            let value = String::from_utf8(field_data.to_vec()).map_err(|e| {
+                AppError::Validation(format!("Invalid UTF-8 in field '{}': {}", field_name, e))
+            })?;
+            form_data.insert(field_name, value);
+        }
+    }
+
+    let payload = build_incoming_payload(&form_data, attachments.len());
+    Ok((payload, attachments, form_data))
+}
+
+async fn parse_mailgun_form<S>(
+    req: axum::http::Request<axum::body::Body>,
+    state: &S,
+) -> Result<
+    (
+        IncomingEmailWebhook,
+        Vec<EmailAttachment>,
+        HashMap<String, String>,
+    ),
+    AppError,
+>
+where
+    S: Send + Sync,
+{
+    let Form(mut form_data) = Form::<HashMap<String, String>>::from_request(req, state)
+        .await
+        .map_err(|e| AppError::Validation(format!("Failed to parse form data: {}", e)))?;
+
+    if let Some(message_id) = form_data
+        .get("message-id")
+        .cloned()
+        .filter(|_| !form_data.contains_key("Message-Id"))
+    {
+        form_data.insert("Message-Id".to_string(), message_id);
+    }
+
+    let payload = build_incoming_payload(&form_data, 0);
+    Ok((payload, Vec::new(), form_data))
+}
+
+async fn parse_mailgun_json<S>(
+    req: axum::http::Request<axum::body::Body>,
+    state: &S,
+) -> Result<(IncomingEmailWebhook, HashMap<String, String>), AppError>
+where
+    S: Send + Sync,
+{
+    let JsonExtractor(payload) = JsonExtractor::<IncomingEmailWebhook>::from_request(req, state)
+        .await
+        .map_err(|e| AppError::Validation(format!("Invalid JSON payload: {}", e)))?;
+
+    Ok((payload, HashMap::new()))
+}
+
+fn build_incoming_payload(
+    form_data: &HashMap<String, String>,
+    attachment_count: usize,
+) -> IncomingEmailWebhook {
+    IncomingEmailWebhook {
+        recipient: form_data
+            .get("recipient")
+            .cloned()
+            .unwrap_or_else(|| "".to_string()),
+        sender: form_data
+            .get("sender")
+            .cloned()
+            .unwrap_or_else(|| "".to_string()),
+        subject: form_data
+            .get("subject")
+            .cloned()
+            .unwrap_or_else(|| "".to_string()),
+        body_plain: form_data.get("body-plain").cloned(),
+        body_html: form_data.get("body-html").cloned(),
+        message_id: form_data
+            .get("Message-Id")
+            .or_else(|| form_data.get("message-id"))
+            .cloned(),
+        message_headers: form_data.get("message-headers").cloned(),
+        attachment_count: Some(attachment_count as u32),
+    }
+}
+
 /// Brevo webhook email address representation
 #[derive(Debug, Deserialize)]
 pub struct BrevoAddress {
@@ -138,98 +329,31 @@ pub struct BrevoWebhookPayload {
 pub async fn handle_incoming_email(
     Extension(pool): Extension<PgPool>,
     Extension(config): Extension<Config>,
-    headers: HeaderMap,
-    uri: axum::http::Uri,
-    mut multipart: Multipart,
+    mailgun_request: MailgunRequest,
 ) -> Result<Json<serde_json::Value>> {
     info!("=== MAILGUN WEBHOOK RECEIVED ===");
 
-    let mut form_data: HashMap<String, String> = HashMap::new();
-    let mut attachments: Vec<EmailAttachment> = Vec::new();
+    let MailgunRequest {
+        headers,
+        uri,
+        mut payload,
+        attachments,
+        form_fields,
+    } = mailgun_request;
 
-    // Parse multipart form data
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        error!("Failed to parse multipart field: {}", e);
-        AppError::Validation(format!("Failed to parse multipart: {}", e))
-    })? {
-        let field_name = field.name().unwrap_or("").to_string();
-        let file_name = field.file_name().map(|name| name.to_string());
-        let content_type = field.content_type().map(|ct| ct.to_string());
-        let field_data = field.bytes().await.map_err(|e| {
-            error!("Failed to read field data: {}", e);
-            AppError::Validation(format!("Failed to read field: {}", e))
-        })?;
-
-        // Check if this is an attachment field (Mailgun uses "attachment-1", "attachment-2", etc.)
-        if field_name.starts_with("attachment") {
-            let filename =
-                file_name.unwrap_or_else(|| format!("attachment_{}.bin", attachments.len() + 1));
-
-            let content_type =
-                content_type.unwrap_or_else(|| "application/octet-stream".to_string());
-
-            let data = field_data.to_vec();
-            let size = data.len();
-
-            // Check attachment size limit
-            if size as u64 > config.max_attachment_size {
-                warn!(
-                    "Attachment {} exceeds size limit: {} > {}",
-                    filename, size, config.max_attachment_size
-                );
-                continue; // Skip oversized attachments
-            }
-
-            attachments.push(EmailAttachment {
-                filename,
-                content_type,
-                data,
-                size,
-            });
-        } else {
-            // Regular form field
-            let value = String::from_utf8(field_data.to_vec()).map_err(|e| {
-                error!("Failed to decode field value: {}", e);
-                AppError::Validation(format!("Invalid UTF-8 in field {}: {}", field_name, e))
-            })?;
-            form_data.insert(field_name, value);
-        }
-    }
-
-    // Build IncomingEmailWebhook from form data
-    let payload = IncomingEmailWebhook {
-        recipient: form_data
-            .get("recipient")
-            .cloned()
-            .unwrap_or_else(|| "".to_string()),
-        sender: form_data
-            .get("sender")
-            .cloned()
-            .unwrap_or_else(|| "".to_string()),
-        subject: form_data
-            .get("subject")
-            .cloned()
-            .unwrap_or_else(|| "".to_string()),
-        body_plain: form_data.get("body-plain").cloned(),
-        body_html: form_data.get("body-html").cloned(),
-        message_id: form_data.get("Message-Id").cloned(),
-        message_headers: form_data.get("message-headers").cloned(),
-        attachment_count: Some(attachments.len() as u32),
-    };
-
-    // Verify webhook security now that we have the multipart fields (signature/timestamp/token)
-    let field_keys: Vec<&str> = form_data.keys().map(|k| k.as_str()).collect();
+    let field_keys: Vec<&str> = form_fields.keys().map(|k| k.as_str()).collect();
     info!(
         "Verifying webhook security... form fields present: {:?}",
         field_keys
     );
+
     if let Err(err) = verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Mailgun,
         &headers,
         &uri,
         &[],
-        Some(&form_data),
+        Some(&form_fields),
     )
     .await
     {
@@ -237,11 +361,31 @@ pub async fn handle_incoming_email(
         return Err(err);
     }
     info!("Webhook security verified");
-    
-    info!("Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}", 
-        payload.recipient, payload.sender, payload.subject, attachments.len());
 
-    process_incoming_email_with_attachments(pool, config, payload, attachments).await
+    // Filter attachments according to size limit
+    let mut filtered_attachments: Vec<EmailAttachment> = Vec::new();
+    for attachment in attachments {
+        if attachment.size as u64 > config.max_attachment_size {
+            warn!(
+                "Attachment {} exceeds size limit: {} > {}",
+                attachment.filename, attachment.size, config.max_attachment_size
+            );
+            continue;
+        }
+        filtered_attachments.push(attachment);
+    }
+
+    payload.attachment_count = Some(filtered_attachments.len() as u32);
+
+    info!(
+        "Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}",
+        payload.recipient,
+        payload.sender,
+        payload.subject,
+        filtered_attachments.len()
+    );
+
+    process_incoming_email_with_attachments(pool, config, payload, filtered_attachments).await
 }
 
 /// Process incoming email webhook (JSON format)
@@ -284,7 +428,7 @@ pub async fn handle_brevo_webhook(
     info!("CC: {:?}", payload.cc);
     info!("Subject: {}", payload.subject);
     info!("Message ID: {:?}", payload.message_id);
-    
+
     // Verify webhook security before processing
     info!("Verifying webhook security...");
     verify_webhook_security(
@@ -297,7 +441,7 @@ pub async fn handle_brevo_webhook(
     )
     .await?;
     info!("Webhook security verified");
-    
+
     let sender = payload.from.email.clone();
     info!("Extracted sender: {}", sender);
     if let Some(name) = payload.from.name.as_ref() {
@@ -313,7 +457,7 @@ pub async fn handle_brevo_webhook(
             AppError::Validation("Brevo payload missing recipient list".to_string())
         })?;
     let recipient = recipient_address.email.clone();
-    
+
     info!("Extracted recipient: '{}'", recipient);
 
     let mut attachments: Vec<EmailAttachment> = Vec::new();
@@ -414,7 +558,7 @@ pub async fn handle_brevo_webhook(
         message_headers,
         attachment_count: Some(attachments.len() as u32),
     };
-    
+
     info!("Built IncomingEmailWebhook for Brevo:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}", 
         incoming.recipient, incoming.sender, incoming.subject, attachments.len());
 
@@ -430,14 +574,20 @@ async fn process_incoming_email_with_attachments(
 ) -> Result<Json<serde_json::Value>> {
     info!(
         "=== INCOMING EMAIL START ===\nFrom: {}\nTo: {}\nSubject: {}\nAttachments: {}",
-        payload.sender, payload.recipient, payload.subject, attachments.len()
+        payload.sender,
+        payload.recipient,
+        payload.subject,
+        attachments.len()
     );
 
     // Normalize recipient address (lowercase)
     let recipient = payload.recipient.to_lowercase().trim().to_string();
     let sender = payload.sender.to_lowercase().trim().to_string();
-    
-    info!("Normalized recipient: '{}', sender: '{}'", recipient, sender);
+
+    info!(
+        "Normalized recipient: '{}', sender: '{}'",
+        recipient, sender
+    );
 
     // Detect if this is a bounce message
     let bounce_info = detect_bounce(
@@ -518,11 +668,17 @@ async fn process_incoming_email_with_attachments(
     info!("Looking up target email for user_id: {}", alias.user_id);
     let target = match TargetService::get_current(&pool, alias.user_id).await? {
         Some(t) if t.verified => {
-            info!("Found verified target email: {} for user: {}", t.email, alias.user_id);
+            info!(
+                "Found verified target email: {} for user: {}",
+                t.email, alias.user_id
+            );
             t
-        },
+        }
         Some(t) => {
-            warn!("Target email exists but NOT verified: {} (user_id: {})", t.email, alias.user_id);
+            warn!(
+                "Target email exists but NOT verified: {} (user_id: {})",
+                t.email, alias.user_id
+            );
             // Log as rejected
             log_email(
                 &pool,
@@ -573,7 +729,7 @@ async fn process_incoming_email_with_attachments(
         payload.body_html.as_ref().map(|b| b.len()).unwrap_or(0),
         attachments.len()
     );
-    
+
     let forward_result = EmailService::forward_email_with_attachments(
         &config,
         &sender,
