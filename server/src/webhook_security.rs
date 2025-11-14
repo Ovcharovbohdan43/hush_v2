@@ -120,6 +120,17 @@ fn verify_ip_whitelist(
         WebhookProvider::Brevo => &config.brevo_ip_whitelist,
     };
 
+    if whitelist
+        .iter()
+        .any(|entry| entry == "*" || entry.eq_ignore_ascii_case("allow_all"))
+    {
+        warn!(
+            "IP whitelist for {:?} contains wildcard entry; permitting all IP addresses",
+            provider
+        );
+        return Ok(());
+    }
+
     if whitelist.is_empty() {
         warn!("IP whitelist is empty for {:?}, allowing all IPs", provider);
         return Ok(());
