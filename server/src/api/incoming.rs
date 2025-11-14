@@ -1,5 +1,5 @@
+use async_trait::async_trait;
 use axum::{
-    async_trait,
     extract::{Extension, Form, FromRequest, Json as JsonExtractor, Multipart},
     http::{header, HeaderMap, Uri},
     Json,
@@ -103,7 +103,7 @@ where
     async fn from_request(
         req: axum::http::Request<axum::body::Body>,
         state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    ) -> std::result::Result<Self, Self::Rejection> {
         let headers = req.headers().clone();
         let uri = req.uri().clone();
         let content_type = headers
@@ -142,14 +142,11 @@ where
 async fn parse_mailgun_multipart<S>(
     req: axum::http::Request<axum::body::Body>,
     state: &S,
-) -> Result<
-    (
-        IncomingEmailWebhook,
-        Vec<EmailAttachment>,
-        HashMap<String, String>,
-    ),
-    AppError,
->
+) -> Result<(
+    IncomingEmailWebhook,
+    Vec<EmailAttachment>,
+    HashMap<String, String>,
+)>
 where
     S: Send + Sync,
 {
@@ -204,14 +201,11 @@ where
 async fn parse_mailgun_form<S>(
     req: axum::http::Request<axum::body::Body>,
     state: &S,
-) -> Result<
-    (
-        IncomingEmailWebhook,
-        Vec<EmailAttachment>,
-        HashMap<String, String>,
-    ),
-    AppError,
->
+) -> Result<(
+    IncomingEmailWebhook,
+    Vec<EmailAttachment>,
+    HashMap<String, String>,
+)>
 where
     S: Send + Sync,
 {
@@ -234,7 +228,7 @@ where
 async fn parse_mailgun_json<S>(
     req: axum::http::Request<axum::body::Body>,
     state: &S,
-) -> Result<(IncomingEmailWebhook, HashMap<String, String>), AppError>
+) -> Result<(IncomingEmailWebhook, HashMap<String, String>)>
 where
     S: Send + Sync,
 {
