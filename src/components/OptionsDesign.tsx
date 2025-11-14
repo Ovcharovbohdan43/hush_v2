@@ -10,7 +10,6 @@ export function OptionsDesign() {
   const [saved, setSaved] = useState(false);
   const [limitPerDay, setLimitPerDay] = useState('10');
   const [autoInsert, setAutoInsert] = useState(false);
-  const [apiUrl, setApiUrl] = useState('https://api.hush.email/v1');
 
   const handleSave = () => {
     setSaved(true);
@@ -88,26 +87,6 @@ export function OptionsDesign() {
               checked={autoInsert}
               onCheckedChange={setAutoInsert}
               className="mt-1"
-            />
-          </div>
-
-          {/* API Base URL */}
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="api-url" className="text-slate-700" style={{ fontSize: '14px', fontWeight: 500 }}>
-                API Base URL
-              </Label>
-              <p className="text-slate-500" style={{ fontSize: '13px' }}>
-                The endpoint for generating and managing email aliases
-              </p>
-            </div>
-            <Input
-              id="api-url"
-              type="url"
-              value={apiUrl}
-              onChange={(e) => setApiUrl(e.target.value)}
-              className="h-12 rounded-xl border-slate-300 font-mono"
-              style={{ fontSize: '13px' }}
             />
           </div>
 
