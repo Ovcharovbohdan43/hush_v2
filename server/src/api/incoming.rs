@@ -218,8 +218,12 @@ pub async fn handle_incoming_email(
     };
 
     // Verify webhook security now that we have the multipart fields (signature/timestamp/token)
-    info!("Verifying webhook security...");
-    verify_webhook_security(
+    let field_keys: Vec<&str> = form_data.keys().map(|k| k.as_str()).collect();
+    info!(
+        "Verifying webhook security... form fields present: {:?}",
+        field_keys
+    );
+    if let Err(err) = verify_webhook_security(
         &config.webhook_security,
         WebhookProvider::Mailgun,
         &headers,
@@ -227,7 +231,11 @@ pub async fn handle_incoming_email(
         &[],
         Some(&form_data),
     )
-    .await?;
+    .await
+    {
+        error!("Mailgun webhook security verification failed: {}", err);
+        return Err(err);
+    }
     info!("Webhook security verified");
     
     info!("Parsed Mailgun webhook data:\n  Recipient: {}\n  Sender: {}\n  Subject: {}\n  Attachments: {}", 
