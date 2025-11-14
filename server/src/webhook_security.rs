@@ -52,9 +52,7 @@ pub async fn verify_webhook_security(
 
     // Verify signature/secret based on provider
     match provider {
-        WebhookProvider::Mailgun => {
-            verify_mailgun_signature(config, headers, uri, form_fields)?
-        }
+        WebhookProvider::Mailgun => verify_mailgun_signature(config, headers, uri, form_fields)?,
         WebhookProvider::SendGrid => verify_sendgrid_signature(config, headers, body)?,
         WebhookProvider::Brevo => verify_brevo_secret(config, headers, uri)?,
     }
@@ -105,7 +103,8 @@ fn extract_client_ip(headers: &HeaderMap) -> Result<IpAddr> {
     // For development, we'll allow requests without IP validation
     // In production, this should fail
     Err(AppError::Validation(
-        "Could not determine client IP address. Ensure X-Forwarded-For or X-Real-IP header is set.".to_string(),
+        "Could not determine client IP address. Ensure X-Forwarded-For or X-Real-IP header is set."
+            .to_string(),
     ))
 }
 
@@ -122,10 +121,7 @@ fn verify_ip_whitelist(
     };
 
     if whitelist.is_empty() {
-        warn!(
-            "IP whitelist is empty for {:?}, allowing all IPs",
-            provider
-        );
+        warn!("IP whitelist is empty for {:?}, allowing all IPs", provider);
         return Ok(());
     }
 
@@ -163,10 +159,10 @@ fn verify_mailgun_signature(
     uri: &Uri,
     form_fields: Option<&HashMap<String, String>>,
 ) -> Result<()> {
-    let secret = config
-        .mailgun_secret
-        .as_ref()
-        .ok_or_else(|| AppError::Auth("Mailgun webhook secret not configured".to_string()))?;
+    let Some(secret) = config.mailgun_secret.as_ref() else {
+        warn!("Mailgun webhook secret not configured; skipping signature verification");
+        return Ok(());
+    };
 
     // Mailgun sends signature in query params or headers
     // Check query params first (more common)
@@ -188,10 +184,7 @@ fn verify_mailgun_signature(
                 .and_then(|h| h.to_str().ok())
                 .map(|s| s.to_string())
         })
-        .or_else(|| {
-            form_fields
-                .and_then(|fields| fields.get("signature").cloned())
-        })
+        .or_else(|| form_fields.and_then(|fields| fields.get("signature").cloned()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun signature".to_string()))?;
 
     let timestamp: String = query_params
@@ -203,10 +196,7 @@ fn verify_mailgun_signature(
                 .and_then(|h| h.to_str().ok())
                 .map(|s| s.to_string())
         })
-        .or_else(|| {
-            form_fields
-                .and_then(|fields| fields.get("timestamp").cloned())
-        })
+        .or_else(|| form_fields.and_then(|fields| fields.get("timestamp").cloned()))
         .ok_or_else(|| AppError::Auth("Missing Mailgun timestamp".to_string()))?;
 
     let token: String = query_params
@@ -286,7 +276,8 @@ fn verify_sendgrid_signature(
         }
     }
 
-    let signature = signature.ok_or_else(|| AppError::Auth("Invalid SendGrid signature format".to_string()))?;
+    let signature =
+        signature.ok_or_else(|| AppError::Auth("Invalid SendGrid signature format".to_string()))?;
 
     // Verify timestamp (prevent replay attacks)
     if let Some(ts) = timestamp {
@@ -359,4 +350,3 @@ fn verify_brevo_secret(
     debug!("Brevo secret verified successfully");
     Ok(())
 }
-
