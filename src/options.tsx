@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shield, Save, Check } from 'lucide-react';
 import { Button } from './components/ui/button';
@@ -11,6 +11,9 @@ import { apiClient } from './lib/api';
 import { toast, Toaster } from 'sonner';
 import './index.css';
 
+const getChromeSyncStorage = () =>
+  typeof chrome !== 'undefined' && chrome.storage?.sync ? chrome.storage.sync : null;
+
 function OptionsContent() {
   const { isAuthenticated, login, register, logout } = useAuth();
   const [saved, setSaved] = useState(false);
@@ -19,6 +22,8 @@ function OptionsContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
+  const [apiUrl, setApiUrl] = useState(apiClient.getBaseUrl());
+  const [apiUrlSaving, setApiUrlSaving] = useState(false);
   
   // Target email state
   const [targetEmail, setTargetEmail] = useState('');
@@ -27,13 +32,39 @@ function OptionsContent() {
   const [verificationSent, setVerificationSent] = useState(false);
 
   useEffect(() => {
-    // Загружаем настройки из chrome.storage
-    chrome.storage.sync.get(['limitPerDay', 'autoInsert'], (result) => {
-      if (result.limitPerDay) setLimitPerDay(result.limitPerDay);
-      if (result.autoInsert !== undefined) setAutoInsert(result.autoInsert);
-    });
-    
-    // Загружаем target email если авторизованы
+    const syncStorage = getChromeSyncStorage();
+    if (syncStorage) {
+      syncStorage.get(['limitPerDay', 'autoInsert', 'apiUrl'], (result: {
+        limitPerDay?: string;
+        autoInsert?: boolean;
+        apiUrl?: string;
+      }) => {
+        if (typeof result.limitPerDay === 'string') {
+          setLimitPerDay(result.limitPerDay);
+        }
+        if (typeof result.autoInsert === 'boolean') {
+          setAutoInsert(result.autoInsert);
+        }
+        if (typeof result.apiUrl === 'string' && result.apiUrl.trim()) {
+          setApiUrl(result.apiUrl);
+        }
+      });
+    } else {
+      const storedLimit = localStorage.getItem('limitPerDay');
+      if (typeof storedLimit === 'string') {
+        setLimitPerDay(storedLimit);
+      }
+      const storedAutoInsert = localStorage.getItem('autoInsert');
+      if (storedAutoInsert !== null) {
+        setAutoInsert(storedAutoInsert === 'true');
+      }
+      const storedApiUrl = localStorage.getItem('apiUrl');
+      if (typeof storedApiUrl === 'string' && storedApiUrl.trim()) {
+        setApiUrl(storedApiUrl.trim());
+      }
+    }
+
+    // Ð—Ð°Ð³Ñ€ÑƒÐ¶Ð°ÐµÐ¼ target email ÐµÑÐ»Ð¸ Ð°Ð²Ñ‚Ð¾Ñ€Ð¸Ð·Ð¾Ð²Ð°Ð½Ñ‹
     if (isAuthenticated) {
       loadTargetEmail();
     }
@@ -76,11 +107,34 @@ function OptionsContent() {
     }
   };
 
+  const handleSaveApiUrl = async () => {
+    if (!apiUrl.trim()) {
+      toast.error('Please enter a valid API URL');
+      return;
+    }
+    try {
+      setApiUrlSaving(true);
+      await apiClient.setBaseUrl(apiUrl.trim());
+      setApiUrl(apiClient.getBaseUrl());
+      toast.success('API URL updated!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save API URL');
+    } finally {
+      setApiUrlSaving(false);
+    }
+  };
+
   const handleSave = async () => {
-    await chrome.storage.sync.set({
-      limitPerDay,
-      autoInsert,
-    });
+    const syncStorage = getChromeSyncStorage();
+    if (syncStorage) {
+      await syncStorage.set({
+        limitPerDay,
+        autoInsert,
+      });
+    } else {
+      localStorage.setItem('limitPerDay', limitPerDay);
+      localStorage.setItem('autoInsert', String(autoInsert));
+    }
     setSaved(true);
     toast.success('Settings saved!');
     setTimeout(() => setSaved(false), 3000);
@@ -117,6 +171,36 @@ function OptionsContent() {
         </div>
 
         <div className="bg-white rounded-b-2xl shadow-xl border border-slate-200 p-8 space-y-6">
+          {/* API URL Section */}
+          <div className="space-y-4 p-6 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">Backend API</h2>
+                <p className="text-sm text-slate-500">
+                  Set the base URL of the Hush API you want the extension to use.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 md:flex-row">
+              <Input
+                id="api-url"
+                type="text"
+                placeholder="https://api.example.com"
+                value={apiUrl}
+                onChange={(e) => setApiUrl(e.target.value)}
+                className="h-12 rounded-xl flex-1"
+              />
+              <Button
+                type="button"
+                onClick={handleSaveApiUrl}
+                disabled={apiUrlSaving}
+                className="h-12 px-6 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white rounded-xl"
+              >
+                {apiUrlSaving ? 'Saving...' : 'Save API URL'}
+              </Button>
+            </div>
+          </div>
+
           {/* Auth Section */}
           {!isAuthenticated ? (
             <div className="space-y-4 p-6 bg-slate-50 rounded-xl border border-slate-200">
@@ -311,7 +395,7 @@ function Options() {
   );
 }
 
-// Инициализация React приложения
+// Ð˜Ð½Ð¸Ñ†Ð¸Ð°Ð»Ð¸Ð·Ð°Ñ†Ð¸Ñ React Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ñ
 const root = document.getElementById('root');
 if (root) {
   createRoot(root).render(<Options />);

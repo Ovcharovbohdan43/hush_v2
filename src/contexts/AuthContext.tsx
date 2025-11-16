@@ -13,19 +13,23 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Хелпер для работы с storage (localStorage или chrome.storage)
+const hasChromeStorage = () =>
+  typeof chrome !== 'undefined' && typeof chrome.storage?.local !== 'undefined';
+
 const storage = {
   getItem: async (key: string): Promise<string | null> => {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
+    if (hasChromeStorage()) {
       return new Promise((resolve) => {
         chrome.storage.local.get([key], (result) => {
-          resolve(result[key] || null);
+          const rawValue = result?.[key as keyof typeof result] as unknown;
+          resolve(typeof rawValue === 'string' ? rawValue : null);
         });
       });
     }
     return localStorage.getItem(key);
   },
   setItem: async (key: string, value: string): Promise<void> => {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
+    if (hasChromeStorage()) {
       return new Promise((resolve) => {
         chrome.storage.local.set({ [key]: value }, () => resolve());
       });
@@ -33,7 +37,7 @@ const storage = {
     localStorage.setItem(key, value);
   },
   removeItem: async (key: string): Promise<void> => {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
+    if (hasChromeStorage()) {
       return new Promise((resolve) => {
         chrome.storage.local.remove([key], () => resolve());
       });

@@ -51,17 +51,54 @@ export interface EmailLog {
 class ApiClient {
   private baseUrl: string;
   private accessToken: string | null = null;
+  private readonly initPromise: Promise<void>;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
-    // Загружаем токен из storage (localStorage или chrome.storage)
-    this.loadToken();
+    // Загружаем токен и базовый URL из storage (localStorage или chrome.storage)
+    this.initPromise = this.initialize();
+  }
+
+  private async initialize() {
+    await Promise.all([this.loadToken(), this.loadBaseUrl()]);
+  }
+
+  private async loadBaseUrl() {
+    const applyStoredUrl = (candidate?: unknown) => {
+      const normalized = this.normalizeBaseUrl(
+        typeof candidate === 'string' ? candidate : null
+      );
+      if (normalized) {
+        this.baseUrl = normalized;
+      }
+    };
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
+      await new Promise<void>((resolve) => {
+        chrome.storage.sync.get(['apiUrl'], (result) => {
+          applyStoredUrl(result?.apiUrl);
+          resolve();
+        });
+      });
+      return;
+    }
+
+    try {
+      const storedUrl = localStorage.getItem('apiUrl');
+      applyStoredUrl(storedUrl);
+    } catch {
+      // localStorage недоступен (например, в сервис-воркере)
+    }
   }
 
   private async loadToken() {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      chrome.storage.local.get(['access_token'], (result) => {
-        this.accessToken = result.access_token || null;
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.get(['access_token'], (result) => {
+          const storedToken = result?.access_token;
+          this.accessToken = typeof storedToken === 'string' ? storedToken : null;
+          resolve();
+        });
       });
     } else {
       this.accessToken = localStorage.getItem('access_token');
@@ -69,7 +106,7 @@ class ApiClient {
   }
 
   private async saveToken(key: string, value: string) {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       await new Promise<void>((resolve) => {
         chrome.storage.local.set({ [key]: value }, () => resolve());
       });
@@ -79,7 +116,7 @@ class ApiClient {
   }
 
   private async removeToken(key: string) {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       await new Promise<void>((resolve) => {
         chrome.storage.local.remove([key], () => resolve());
       });
@@ -92,14 +129,17 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    await this.initPromise;
+
     const url = `${this.baseUrl}${endpoint}`;
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+    const headers = new Headers(options.headers ?? undefined);
+
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
 
     if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`;
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
     }
 
     const response = await fetch(url, {
@@ -235,6 +275,54 @@ class ApiClient {
     this.accessToken = null;
     await this.removeToken('access_token');
     await this.removeToken('refresh_token');
+  }
+
+  async setBaseUrl(url: string) {
+    const normalized = this.normalizeBaseUrl(url);
+    if (!normalized) {
+      throw new Error('Invalid API base URL. Please provide an http(s) URL.');
+    }
+
+    this.baseUrl = normalized;
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
+      await new Promise<void>((resolve) => {
+        chrome.storage.sync.set({ apiUrl: normalized }, () => resolve());
+      });
+    } else {
+      try {
+        localStorage.setItem('apiUrl', normalized);
+      } catch {
+        // localStorage может быть недоступен
+      }
+    }
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  async ready(): Promise<void> {
+    return this.initPromise;
+  }
+
+  private normalizeBaseUrl(url?: string | null): string | null {
+    if (!url) {
+      return null;
+    }
+    const trimmed = url.trim();
+    if (!trimmed) {
+      return null;
+    }
+    try {
+      const parsed = new URL(trimmed);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return null;
+      }
+      return trimmed.replace(/\/+$/, '');
+    } catch {
+      return null;
+    }
   }
 
   getAccessToken(): string | null {
